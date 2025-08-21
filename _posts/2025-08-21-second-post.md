@@ -4,19 +4,13 @@ title: "Claude Code via CCR 深度使用"
 toc: true
 ---
 
-情况就是这么个情况：
-
-1. qwen-cli 每天免费提供 2000次 的 qwen3-coder-plus
-2. 魔搭社区每天免费提供 2000 次的 qwen3-coder
-3. 不是所有人都想用 qwen-cli（原因不重要），想用 claude code
-4. 于是有人想用 claude code，但是白嫖 qwen 的模型
-5. 很多人习惯了claude code，然后模型各种更新，拥抱 claude code 30 秒不动摇
+Claude Code 号称程序员的终极选择，越来越多的工程师在试用了 Cursor 等助手之后，都转投了 Claude Code。
 
 ---
 
 ## 安装 Claude Code
 
-开始之前，先复习一下安装 Claude Code 的最稳妥的方式，此方式适合 WSL + Ubuntu 环境，或者直接 Ubuntu Linux 虚机。
+开始之前，先复习一下安装 Claude Code 的最稳妥的方式，此方式适合 WSL + Ubuntu 环境，或者直接 Linux 虚机。
 
 安装nvm
 
@@ -204,6 +198,7 @@ qwen
 ```
 
 ---
+
 ## CCR UI
 
 ccr 支持 ui 配置，用 ccr ui 启动就可以界面配置，切换不同 Providers
