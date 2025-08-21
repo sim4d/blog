@@ -58,7 +58,7 @@ npm install @leason/claude-code-config -g
 
 魔搭社区地址 https://modelscope.cn/my/overview
 
-### 注意：魔塔社区账号要关联 阿里云账号，才能获得每天 2000 次的免费使用量，重要 ！！！
+#### 注意：魔塔社区账号要关联 阿里云账号，才能获得每天 2000 次的免费使用量，重要 ！！！
 
 运行配置小工具，填入魔塔社区获取的 API Key
 
@@ -70,7 +70,7 @@ ccr-modelscope
 
 ## 配置使用 qwen-cli
 
-魔搭怎么用就不说了，这里说对接qwen-cli，步骤：
+这里说对接 qwen-cli 步骤：
 
 1. 安装qwen-cli（ https://github.com/QwenLM/qwen-code ）
 
