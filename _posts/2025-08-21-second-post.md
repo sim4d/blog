@@ -1,6 +1,6 @@
 ---
 layout: post  
-title: "Claude Code via CCR 深度使用"  
+title: "Claude Code via CCR 深度使用：配置篇"  
 toc: true
 ---
 
