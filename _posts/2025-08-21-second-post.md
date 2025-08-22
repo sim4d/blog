@@ -207,14 +207,13 @@ ccr 支持 ui 配置，用 ccr ui 启动就可以界面配置，切换不同 Pro
 ccr ui
 ```
 
-注意设置保存后，需要在命令行重启 ccr ，然后能用了
+注意设置保存后，需要在命令行重启 ccr 
 
 ```bash
 ccr restart
 ```
 
-注意设置保存后，需要在命令行重启 ccr ，然后能用了
-
+启动
 ```bash
 ccr code
 ```
