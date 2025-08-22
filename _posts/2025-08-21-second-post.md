@@ -14,7 +14,7 @@ Claude Code 正以「程序员终极助手」的身份走红 —— 许多工程
 
 安装nvm
 
-```
+```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 
 source ~/.bashrc
@@ -22,7 +22,7 @@ source ~/.bashrc
 
 使用 lts 版本的 node
 
-```
+```bash
 nvm install --lts
 
 nvm use --lts
@@ -30,19 +30,19 @@ nvm use --lts
 
 ### 安装 v11.5.2 的 npm，重要 !!!
 
-```
+```bash
 npm install -g npm@v11.5.2
 ```
 
 好了，可以安装 ccr 了
 
-```
+```bash
 npm install -g @musistudio/claude-code-router@latest
 ```
 
 下载配置小工具
 
-```
+```bash
 npm install @leason/claude-code-config -g
 ```
 
@@ -56,7 +56,7 @@ npm install @leason/claude-code-config -g
 
 运行配置小工具，填入魔塔社区获取的 API Key
 
-```
+```bash
 ccr-modelscope
 ```
 
@@ -68,20 +68,20 @@ ccr-modelscope
 
 1. 安装qwen-cli（ https://github.com/QwenLM/qwen-code ）
 
-```
+```bash
 npm install -g @qwen-code/qwen-code@latest
 qwen --version
 ```
 
 ### 登录 qwen-cli，选择 qwen Oauth 登录，走完登录流程，重要 !!!
 
-```
+```bash
 qwen
 ```
 
 在对应的provider，增加qwen-cli的设置项，api\_key随意填
 
-```
+```json
     {
       "name": "qwen-cli",
       "api_base_url": "https://portal.qwen.ai/v1/chat/completions",
@@ -100,7 +100,7 @@ qwen
 
 在 router 部分配置使用这个模型（仅使用qwen-cli）
 
-```
+```json
     "Router": {
         "default": "qwen-cli,qwen3-coder-plus",
         "background": "",
@@ -115,7 +115,7 @@ qwen
 
 我这个混合使用 qwen 和 modelscope，配好就这个样子
 
-```
+```json
 {
   "LOG": false,
   "CLAUDE_PATH": "",
@@ -203,24 +203,24 @@ qwen
 
 ccr 支持 ui 配置，用 ccr ui 启动就可以界面配置，切换不同 Providers
 
-```
+```bash
 ccr ui
 ```
 
 注意设置保存后，需要在命令行重启 ccr ，然后能用了
 
-```
+```bash
 ccr restart
 ```
 
 注意设置保存后，需要在命令行重启 ccr ，然后能用了
 
-```
+```bash
 ccr code
 ```
 
 或者直接学习高手的用法，后果自负 :)
 
-```
+```bash
 ccr code --dangerously-skip-permissions
 ```
