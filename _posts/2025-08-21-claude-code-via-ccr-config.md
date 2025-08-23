@@ -2,6 +2,12 @@
 layout: post  
 title: "Claude Code via CCR 深度使用：配置篇"  
 toc: true
+categories:
+  - AI
+  - Programming
+tags:
+  - Claude Code
+  - CCR
 ---
 
 Claude Code 正以「程序员终极助手」的身份走红 —— 许多工程师在深度试用过 Cursor 等热门工具后，纷纷转向 Claude Code。凭借更强的上下文理解能力和代码生成精准度，它成了开发者眼中「能扛事、少踩坑」的新选择。

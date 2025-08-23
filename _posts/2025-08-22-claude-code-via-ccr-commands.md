@@ -2,6 +2,12 @@
 layout: post  
 title: "Claude Code via CCR 深度使用：斜杠命令"  
 toc: true
+categories:
+  - AI
+  - Programming
+tags:
+  - Claude Code
+  - CCR
 ---
 
 # Claude Code 斜杠命令：助力开发者高效协作的秘密武器
