@@ -71,7 +71,7 @@ Claude Code 的斜杠命令使用直观，开发者只需在支持的界面（�
 allowed-tools: [Bash(git:*), Read(*), Grep(*), LS(*)]
 description: Add and commit with conventional style, without Claude Code branding
 version: "1.0.0"
-author: "User"
+author: "sim4d @ 微信公众号：sim4ai.com"
 ---
 
 # Git Commit Command
