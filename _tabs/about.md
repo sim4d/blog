@@ -4,5 +4,7 @@ icon: fas fa-info-circle
 order: 4
 ---
 
-> Add Markdown syntax content to file `_tabs/about.md`{: .filepath } and it will show up on this page.
-{: .prompt-tip }
+
+# About Sim4AI
+
+Sim4AI is dedicated to empowering developers with AI-driven coding solutions. Our blog explores tools like Claude Code and Claude Code Router, offering insights on configuration, commands, and best practices to streamline workflows. We focus on practical, innovative approaches to enhance coding efficiency and collaboration. Join us to stay updated on the latest AI coding advancements!
