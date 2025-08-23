@@ -23,6 +23,7 @@ Claude Code 由 Anthropic 开发，融合自然语言处理与编程。斜杠命
 斜杠命令使用直观，格式为 `/命令名 [参数]`，如 `/debug [代码]` 快速调试。
 
 ### 步骤
+
 1. **触发**：输入命令，AI 解析上下文（如文件或仓库状态）。
 2. **参数**：支持描述、路径或选项，如 `/format code.js --style=google`。
 3. **执行**：预览结果后确认，防止误操作。
@@ -44,29 +45,40 @@ Claude Code 由 Anthropic 开发，融合自然语言处理与编程。斜杠命
 Conventional Commits 是一种结构化提交消息规范，广泛用于 React、Vue 等项目，利于自动化版本管理和日志生成。
 
 ### 格式
+
 ```
 <type>[scope]: <description>
 ```
+
 - **type**：变更类型，如 `feat`（新功能）、`fix`（bug 修复）、`docs`（文档更新）。
 - **scope**：可选，指定影响范围，如 `ui`（用户界面）、`api`（接口）。
 - **description**：简洁描述，50 字符内，首字母小写，无句号。例如：
-  - `feat(ui): add login button`
-  - `fix(api): resolve user auth error`
-  - `docs(readme): update installation guide`
+    - `feat(ui): add login button`
+    - `fix(api): resolve user auth error`
+    - `docs(readme): update installation guide`
 
 规范提升可读性，助力工具如 semantic-release 自动升级版本，审查效率可提升 20%。
 
-## /git-add-commit：智能提交
+## 重点命令剖析：/git-add-commit 的强大与实现
 
-`/git-add-commit` 遵循 Conventional Commits，自动分析变更、生成消息、暂存并提交，输出专业无水印。
+`/git-add-commit` 命令专为 Git 提交设计，严格遵循 Conventional Commits 规范。它自动化分析变更、生成消息、暂存文档并提交，全程无品牌水印，确保专业输出。适用于有未提交变更的仓库，帮助快速创建规范 commit。
 
-### 逻辑
-1. 检查 `git status` 和 `diff`，推断变更类型（如 `feat`、`fix`）。
-2. 解析用户输入，融入上下文。
-3. 生成规范消息，默认英文。
-4. 确认暂存文件，提交并展示结果。
+### 命令逻辑
 
-### 源码
+检查 `git status` 和 `git diff`，分析变更类型（如 `feat` 或 `fix`）。
+
+解析用户输入，融入额外上下文（如描述或类型覆盖）。
+
+生成符合规范的 `commit` 消息，默认使用英文。
+
+确认暂存文档并提交，展示结果。
+
+### 源码展示
+
+以下是 `/git-add-commit` 的完整实现，基于 Markdown 文档，供参考与自定义。如果显示格式不正确，请线上查看：
+
+https://sim4ai.com/posts/claude-code-via-ccr-commands/
+
 ```markdown
 ---
 allowed-tools: [Bash(git:*), Read(*), Grep(*), LS(*)]
@@ -162,9 +174,11 @@ Generate appropriate conventional commit messages based on the actual changes in
 
 ```
 
-### 示例
-输入 `/git-add-commit feat(ui): add button component`，生成 `feat(ui): add button component`，提交变更。AI 推断类型（如代码添加→`feat`，修复→`fix`），节省时间，杜绝错误。
 
-## 结语
+### 使用示例
 
-Claude Code 斜杠命令，尤其是 `/git-add-commit`，结合 Conventional Commits，让提交更规范，协作更高效。拥抱 AI，摆脱琐碎，专注创新。你准备好用代码书写未来了吗？分享你的体验，加入技术革新！
+在仓库中输入 `/git-add-commit feat(ui): add button component`，命令会分析变更，生成 `feat(ui): add new button component` 的消息并提交。若未暂存文档，用户可确认 `stage` 列表。命令通过 AI 推断变更类型（如代码添加→`feat`，bug 修复→`fix`），确保消息简洁规范。
+
+## 结语：拥抱 AI，掌控代码未来
+
+Claude Code 的斜杠命令，尤其是 `/git-add-commit`，不仅是工具，更是开发者向专业化迈进的桥梁。依托 Conventional Commits 规范，你的仓库将更易维护，团队协作更顺畅。作为码农，别让琐事拖累创新——立即使用这些命令，让 AI 成为你的可靠伙伴。未来属于高效者，你准备好用代码书写属于你的传奇了吗？欢迎在评论区分享你的使用心得，与开源社区一起推动技术进步！
