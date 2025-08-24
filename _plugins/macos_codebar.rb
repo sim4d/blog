@@ -6,11 +6,11 @@
 CSS_SNIPPET = <<~CSS
 <style id="macos-codebar-css">
 :root {
-  --codebar-left-padding: 32px;
+  --codebar-left-padding: 40px;
   --codebar-height: 32px;
   --codebar-radius: 10px;
-  --macos-dot-size: 14px;
-  --macos-dot-gap: 12px;
+  --macos-dot-size: 12px;
+  --macos-dot-gap: 20px;
 }
 
 /* Base code block container (Rouge/Chirpy wraps code in .highlight) */
