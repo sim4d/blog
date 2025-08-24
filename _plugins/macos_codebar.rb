@@ -8,6 +8,8 @@ CSS_SNIPPET = <<~CSS
 :root {
   --codebar-height: 32px;
   --codebar-radius: 10px;
+  --macos-dot-size: 12px;
+  --macos-dot-gap: 8px;
 }
 
 /* Base code block container (Rouge/Chirpy wraps code in .highlight) */
@@ -20,6 +22,13 @@ CSS_SNIPPET = <<~CSS
   /* Ensure no grayscale/filters from theme affect colors */
   -webkit-filter: none !important;
   filter: none !important;
+}
+/* Aggressive filter reset on common wrappers to prevent greyscale inheritance */
+figure.highlight, div.highlight, .highlight, .highlight *,
+.code-header, .code-header * {
+  -webkit-filter: none !important;
+  filter: none !important;
+  opacity: 1 !important;
 }
 
 /* Fallback: draw the macOS bar on the code block itself */
@@ -37,13 +46,13 @@ CSS_SNIPPET = <<~CSS
   position: absolute;
   top: calc(var(--codebar-height) / 2);
   left: 12px;
-  width: 12px; height: 12px;
+  width: var(--macos-dot-size); height: var(--macos-dot-size);
   border-radius: 50%;
   transform: translateY(-50%);
   background: #ff5f56; /* red */
-  box-shadow: 16px 0 0 #ffbd2e, /* yellow */
-              32px 0 0 #27c93f; /* green */
-  z-index: 2;
+  box-shadow: calc(var(--macos-dot-size) + var(--macos-dot-gap)) 0 0 #ffbd2e, /* yellow */
+              calc((var(--macos-dot-size) + var(--macos-dot-gap)) * 2) 0 0 #27c93f; /* green */
+  z-index: 9;
   /* Force color rendering */
   -webkit-filter: none !important;
   filter: none !important;
@@ -65,11 +74,11 @@ CSS_SNIPPET = <<~CSS
   position: relative;
   height: var(--codebar-height);
   line-height: var(--codebar-height);
-  padding-left: 56px; /* space for macOS buttons */
+  padding-left: 12px !important; /* left padding; real dots inserted as first child */
   padding-right: 8px;
   border: 1px solid rgba(0,0,0,0.08);
   border-bottom: 1px solid rgba(0,0,0,0.08);
-  background: linear-gradient(180deg, #f5f5f7, #e6e6ea);
+  background: linear-gradient(180deg, #f5f5f7, #e6e6ea) !important;
   border-top-left-radius: var(--codebar-radius);
   border-top-right-radius: var(--codebar-radius);
   /* Layout fixes to avoid overlaps */
@@ -84,25 +93,46 @@ CSS_SNIPPET = <<~CSS
 .code-header::before {
   content: "";
   position: absolute;
-  top: 50%; left: 12px;
-  width: 12px; height: 12px;
+  top: 50%; left: 16px;
+  width: var(--macos-dot-size); height: var(--macos-dot-size);
   border-radius: 50%;
   transform: translateY(-50%);
-  background: #ff5f56; /* red */
-  box-shadow: 16px 0 0 #ffbd2e, /* yellow */
-              32px 0 0 #27c93f; /* green */
+  background: #ff5f56 !important; /* red */
+  box-shadow: calc(var(--macos-dot-size) + var(--macos-dot-gap)) 0 0 #ffbd2e, /* yellow */
+              calc((var(--macos-dot-size) + var(--macos-dot-gap)) * 2) 0 0 #27c93f; /* green */
   z-index: 1;
+  -webkit-filter: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
 }
 /* Ensure header content lays above the pseudo element and doesn't overlap */
 .code-header > * { position: relative; z-index: 2; }
 
-/* Language label and copy button behavior */
-.code-header .code-lang, .code-header .lang {
-  opacity: .85;
+/* Hide any theme-provided dot elements to avoid duplication */
+.code-header .code-header-dots,
+.code-header .code-header-dot,
+.code-header .dots,
+.code-header .traffic-lights,
+.code-header .window-controls {
+  display: none !important;
+}
+
+/* Language label and copy button behavior (broaden selectors) */
+.code-header .code-lang,
+.code-header .lang,
+.code-header .language,
+.code-header [class*="lang"],
+.code-header .file-name {
+  opacity: .9;
   font-size: .85em;
-  position: relative !important;
+  position: static !important; /* let flex flow it */
   left: auto !important;
   margin-left: 0 !important;
+  padding-left: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Place copy button on the far right in flex layout */
 .code-header .copy-btn, .code-header .btn-copy {
@@ -116,7 +146,47 @@ CSS_SNIPPET = <<~CSS
     border-bottom-color: rgba(255,255,255,0.06);
   }
 }
+.macos-dots{display:inline-flex;align-items:center;gap:var(--macos-dot-gap);margin-right:8px;}
+.macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;}
+.macos-dots .red{background:#ff5f56!important;}
+.macos-dots .yellow{background:#ffbd2e!important;}
+.macos-dots .green{background:#27c93f!important;}
+.code-header::before{display:none!important;}
+.highlight::after{display:none!important;}
+.code-header{display:flex!important;align-items:center!important;}
+.code-header .copy-btn,.code-header .btn-copy{margin-left:auto!important;float:none!important;}
+.code-header .code-lang,.code-header .lang,.code-header .language,.code-header [class*="lang"],.code-header .file-name{margin-left:8px!important;}
+.highlight>.macos-dots{position:absolute;top:calc(var(--codebar-height)/2);left:12px;transform:translateY(-50%);z-index:10;}
 </style>
+<script id="macos-codebar-js">
+(function(){
+  function createDots(){
+    var md=document.createElement('span');md.className='macos-dots';
+    var colors=['red','yellow','green'];
+    for(var i=0;i<3;i++){var s=document.createElement('span');s.className='dot '+colors[i];md.appendChild(s);} 
+    return md;
+  }
+  function ensureHeaderDots(){
+    document.querySelectorAll('.code-header').forEach(function(h){
+      if(!h.querySelector('.macos-dots')){
+        h.insertBefore(createDots(), h.firstChild);
+      }
+    });
+  }
+  function ensureFallbackDots(){
+    document.querySelectorAll('figure.highlight, div.highlight, pre.highlight, .highlight').forEach(function(h){
+      var prev=h.previousElementSibling;
+      var hasHeader=(prev && prev.classList.contains('code-header')) || h.querySelector('.code-header');
+      if(!hasHeader && !h.querySelector('.macos-dots')){
+        h.appendChild(createDots());
+      }
+    });
+  }
+  function init(){ ensureHeaderDots(); ensureFallbackDots(); }
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', init); }
+  else { init(); }
+})();
+</script>
 CSS
 
 module Jekyll
