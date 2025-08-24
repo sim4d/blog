@@ -6,11 +6,11 @@
 CSS_SNIPPET = <<~CSS
 <style id="macos-codebar-css">
 :root {
-  --codebar-left-padding: 12px;
+  --codebar-left-padding: 24px;
   --codebar-height: 32px;
   --codebar-radius: 10px;
-  --macos-dot-size: 12px;
-  --macos-dot-gap: 8px;
+  --macos-dot-size: 14px;
+  --macos-dot-gap: 10px;
 }
 
 /* Base code block container (Rouge/Chirpy wraps code in .highlight) */
@@ -148,7 +148,7 @@ figure.highlight, div.highlight, .highlight, .highlight *,
   }
 }
 .macos-dots{display:inline-flex;align-items:center;gap:var(--macos-dot-gap);margin-right:8px;margin-left:8px;}
-.macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;}
+.macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;flex:0 0 auto;}
 .macos-dots .red{background:#ff5f56!important;}
 .macos-dots .yellow{background:#ffbd2e!important;}
 .macos-dots .green{background:#27c93f!important;}
@@ -172,6 +172,9 @@ figure.highlight, div.highlight, .highlight, .highlight *,
     document.querySelectorAll('.code-header').forEach(function(h){
       if(!h.querySelector('.macos-dots')){
         h.insertBefore(createDots(), h.firstChild);
+        // ensure label has left margin so it will not overlap
+        var label=h.querySelector('.code-lang, .lang, .language, [class*="lang"], .file-name');
+        if(label){ label.style.marginLeft = '8px'; }
       }
     });
   }
