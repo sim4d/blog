@@ -6,6 +6,7 @@
 CSS_SNIPPET = <<~CSS
 <style id="macos-codebar-css">
 :root {
+  --codebar-left-padding: 12px;
   --codebar-height: 32px;
   --codebar-radius: 10px;
   --macos-dot-size: 12px;
@@ -74,7 +75,7 @@ figure.highlight, div.highlight, .highlight, .highlight *,
   position: relative;
   height: var(--codebar-height);
   line-height: var(--codebar-height);
-  padding-left: 12px !important; /* left padding; real dots inserted as first child */
+  padding-left: calc(var(--codebar-left-padding)) !important; /* left padding; real dots inserted as first child */
   padding-right: 8px;
   border: 1px solid rgba(0,0,0,0.08);
   border-bottom: 1px solid rgba(0,0,0,0.08);
@@ -93,7 +94,7 @@ figure.highlight, div.highlight, .highlight, .highlight *,
 .code-header::before {
   content: "";
   position: absolute;
-  top: 50%; left: 16px;
+  top: 50%; left: calc(var(--codebar-left-padding));
   width: var(--macos-dot-size); height: var(--macos-dot-size);
   border-radius: 50%;
   transform: translateY(-50%);
@@ -146,7 +147,7 @@ figure.highlight, div.highlight, .highlight, .highlight *,
     border-bottom-color: rgba(255,255,255,0.06);
   }
 }
-.macos-dots{display:inline-flex;align-items:center;gap:var(--macos-dot-gap);margin-right:8px;}
+.macos-dots{display:inline-flex;align-items:center;gap:var(--macos-dot-gap);margin-right:8px;margin-left:8px;}
 .macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;}
 .macos-dots .red{background:#ff5f56!important;}
 .macos-dots .yellow{background:#ffbd2e!important;}
@@ -156,7 +157,8 @@ figure.highlight, div.highlight, .highlight, .highlight *,
 .code-header{display:flex!important;align-items:center!important;}
 .code-header .copy-btn,.code-header .btn-copy{margin-left:auto!important;float:none!important;}
 .code-header .code-lang,.code-header .lang,.code-header .language,.code-header [class*="lang"],.code-header .file-name{margin-left:8px!important;}
-.highlight>.macos-dots{position:absolute;top:calc(var(--codebar-height)/2);left:12px;transform:translateY(-50%);z-index:10;}
+.highlight{position:relative;}
+.highlight>.macos-dots{position:absolute;top:calc(var(--codebar-height)/2);left:calc(var(--codebar-left-padding));transform:translateY(-50%);z-index:10;}
 </style>
 <script id="macos-codebar-js">
 (function(){
