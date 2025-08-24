@@ -17,6 +17,9 @@ CSS_SNIPPET = <<~CSS
   overflow: hidden;
   /* Fallback bar when there is no separate header */
   padding-top: var(--codebar-height);
+  /* Ensure no grayscale/filters from theme affect colors */
+  -webkit-filter: none !important;
+  filter: none !important;
 }
 
 /* Fallback: draw the macOS bar on the code block itself */
@@ -27,6 +30,7 @@ CSS_SNIPPET = <<~CSS
   height: var(--codebar-height);
   background: linear-gradient(180deg, #f5f5f7, #e6e6ea);
   border-bottom: 1px solid rgba(0,0,0,0.08);
+  z-index: 1;
 }
 .highlight::after {
   content: "";
@@ -39,6 +43,13 @@ CSS_SNIPPET = <<~CSS
   background: #ff5f56; /* red */
   box-shadow: 16px 0 0 #ffbd2e, /* yellow */
               32px 0 0 #27c93f; /* green */
+  z-index: 2;
+  /* Force color rendering */
+  -webkit-filter: none !important;
+  filter: none !important;
+  mix-blend-mode: normal !important;
+  opacity: 1 !important;
+  pointer-events: none;
 }
 
 /* If a separate header exists before the block, remove fallback */
@@ -61,6 +72,14 @@ CSS_SNIPPET = <<~CSS
   background: linear-gradient(180deg, #f5f5f7, #e6e6ea);
   border-top-left-radius: var(--codebar-radius);
   border-top-right-radius: var(--codebar-radius);
+  /* Layout fixes to avoid overlaps */
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Ensure no grayscale/filters from theme affect colors */
+  -webkit-filter: none !important;
+  filter: none !important;
+  z-index: 0;
 }
 .code-header::before {
   content: "";
@@ -72,9 +91,24 @@ CSS_SNIPPET = <<~CSS
   background: #ff5f56; /* red */
   box-shadow: 16px 0 0 #ffbd2e, /* yellow */
               32px 0 0 #27c93f; /* green */
+  z-index: 1;
 }
-.code-header .code-lang, .code-header .lang { opacity: .7; font-size: .85em; }
-.code-header .copy-btn, .code-header .btn-copy { float: right; }
+/* Ensure header content lays above the pseudo element and doesn't overlap */
+.code-header > * { position: relative; z-index: 2; }
+
+/* Language label and copy button behavior */
+.code-header .code-lang, .code-header .lang {
+  opacity: .85;
+  font-size: .85em;
+  position: relative !important;
+  left: auto !important;
+  margin-left: 0 !important;
+}
+/* Place copy button on the far right in flex layout */
+.code-header .copy-btn, .code-header .btn-copy {
+  margin-left: auto;
+  float: none;
+}
 
 @media (prefers-color-scheme: dark) {
   .code-header, .highlight::before {
