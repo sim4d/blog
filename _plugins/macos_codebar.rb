@@ -6,11 +6,11 @@
 CSS_SNIPPET = <<~CSS
 <style id="macos-codebar-css">
 :root {
-  --codebar-left-padding: 24px;
+  --codebar-left-padding: 32px;
   --codebar-height: 32px;
   --codebar-radius: 10px;
   --macos-dot-size: 14px;
-  --macos-dot-gap: 10px;
+  --macos-dot-gap: 12px;
 }
 
 /* Base code block container (Rouge/Chirpy wraps code in .highlight) */
@@ -147,8 +147,9 @@ figure.highlight, div.highlight, .highlight, .highlight *,
     border-bottom-color: rgba(255,255,255,0.06);
   }
 }
-.macos-dots{display:inline-flex;align-items:center;gap:var(--macos-dot-gap);margin-right:8px;margin-left:8px;}
-.macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;flex:0 0 auto;}
+.macos-dots{display:inline-flex;align-items:center;gap:0;margin-right:8px;margin-left:8px;line-height:0;}
+.macos-dots .dot{width:var(--macos-dot-size);height:var(--macos-dot-size);border-radius:50%;-webkit-filter:none!important;filter:none!important;flex:0 0 auto;display:block;margin-right:var(--macos-dot-gap);} 
+.macos-dots .dot:last-child{margin-right:0;}
 .macos-dots .red{background:#ff5f56!important;}
 .macos-dots .yellow{background:#ffbd2e!important;}
 .macos-dots .green{background:#27c93f!important;}
@@ -156,7 +157,7 @@ figure.highlight, div.highlight, .highlight, .highlight *,
 .highlight::after{display:none!important;}
 .code-header{display:flex!important;align-items:center!important;}
 .code-header .copy-btn,.code-header .btn-copy{margin-left:auto!important;float:none!important;}
-.code-header .code-lang,.code-header .lang,.code-header .language,.code-header [class*="lang"],.code-header .file-name{margin-left:8px!important;}
+.code-header .code-lang,.code-header .lang,.code-header .language,.code-header [class*="lang"],.code-header .file-name{margin-left:12px!important;}
 .highlight{position:relative;}
 .highlight>.macos-dots{position:absolute;top:calc(var(--codebar-height)/2);left:calc(var(--codebar-left-padding));transform:translateY(-50%);z-index:10;}
 </style>
