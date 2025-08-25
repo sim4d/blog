@@ -40,15 +40,19 @@ nvm use --lts
 npm install -g npm@v11.5.2
 ```
 
-好了，可以安装 cc, ccr 了
+好了，可以安装 cc 了
 
 ```bash
 npm install -g @anthropic-ai/claude-code
+```
 
+安装 ccr
+
+```bash
 npm install -g @musistudio/claude-code-router@latest
 ```
 
-下载配置小工具
+安装配置小工具
 
 ```bash
 npm install @leason/claude-code-config -g
