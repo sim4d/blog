@@ -75,9 +75,9 @@ Conventional Commits 是一种结构化提交消息规范，广泛用于 React�
 
 ### 源码展示
 
-以下是 `/git-add-commit` 的完整实现，基于 Markdown 文档，供参考与自定义。如果显示格式不正确，请线上查看：
+以下是 `/git-add-commit` 的完整实现，基于 Markdown 文档，供参考与自定义。如果显示格式不正确，请查看线上版本：
 
-https://sim4ai.com/posts/claude-code-via-ccr-commands/
+https://sim4ai.com/2025/08/claude-code-via-ccr-commands/
 
 ```markdown
 ---
@@ -182,3 +182,4 @@ Generate appropriate conventional commit messages based on the actual changes in
 ## 结语：拥抱 AI，掌控代码未来
 
 Claude Code 的斜杠命令，尤其是 `/git-add-commit`，不仅是工具，更是开发者向专业化迈进的桥梁。依托 Conventional Commits 规范，你的仓库将更易维护，团队协作更顺畅。作为码农，别让琐事拖累创新——立即使用这些命令，让 AI 成为你的可靠伙伴。未来属于高效者，你准备好用代码书写属于你的传奇了吗？欢迎在评论区分享你的使用心得，与开源社区一起推动技术进步！
+
