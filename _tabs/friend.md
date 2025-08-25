@@ -1,0 +1,12 @@
+---
+# the default layout is 'page'
+icon: fas fa-info-circle
+order: 5
+---
+
+#### More in [https://www.sim4ai.com](https://www.sim4ai.com)
+
+- [gemini.sim4ai.com](https://gemini.sim4ai.com)
+- [research.sim4ai.com](https://research.sim4ai.com)
+- [tv.sim4ai.com](https://tv.sim4ai.com)
+- [news.sim4ai.com](https://news.sim4ai.com)
