@@ -18,7 +18,7 @@ Gemini CLI 的配置方式与 Qwen CLI 类似，操作简单。首先，下载 `
 - 在 `config.json` 中正确配置 `PROXY_URL` 字段。
 - 在 `config.json` 中正确配置 `google-cloud-project-id` 字段。
 
-**示例代码：**  
+**下载路径：**  
 
 ```javascript
 // 下载 gemini-cli.js
@@ -62,7 +62,7 @@ Rovodev API 的配置流程同样直观。首先，下载 `rovo-cli.js` 文件�
 - 确保 `acli rovodev run` 命令行工具已安装，并能正常启动运行。  
 - 在 `config.json` 中正确填写 `ROVO_DEV_EMAIL` 和 `ROVO_DEV_API_TOKEN` 字段。
 
-**示例代码：**  
+**下载路径：**  
 
 ```javascript
 // 下载 rovo-cli.js
