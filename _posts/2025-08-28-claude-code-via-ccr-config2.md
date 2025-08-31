@@ -10,6 +10,10 @@ tags: [Claude Code, CCR]
 
 在上一篇文章《Claude Code via CCR: 配置篇（一）》中，我们介绍了如何通过 CCR（Claude Code Router）配置并使用目前公认最强的 Agentic Coding 工具——Claude Code。近期，CCR 新版本新增了对 Gemini-CLI 和 Rovodev API 的支持。本文将详细介绍这两者的具体配置步骤，并在文末以表格形式总结当前各渠道的每日免费使用额度，方便大家参考。
 
+若因排版问题导致脚本 / 配置无法复制，可点击页末 “阅读原文”，或通过下方链接在浏览器中打开查看并拷贝。
+
+https://sim4ai.com/2025/08/claude-code-via-ccr-config2/
+
 ## 1. Gemini CLI 配置
 
 Gemini CLI 的配置方式与 Qwen CLI 类似，操作简单。首先，下载 `gemini-cli.js` 文件，并将其保存至 `$HOME/.claude-code-router/plugins/gemini-cli.js`。随后，在 `$HOME/.claude-code-router/config.json` 中添加相关配置。需要注意以下两点：  
@@ -103,13 +107,13 @@ https://gist.githubusercontent.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53/raw/8d
 
 以下表格总结了当前各 API 的每日免费使用额度，供大家快速对比参考：
 
-| **API 名称**      | **每日免费额度** | **其它说明**       |
-| ----------------- | ---------------- | ------------------ |
-| Qwen + 魔塔 API   | 2000 次          |                    |
-| Qwen CLI          | 2000 次          |                    |
-| Qwen + OpenRouter | 1000 次          | 账户余额大于 10USD |
-| Gemini CLI        | 1000 次          | 配置 PROXY_URL     |
-| Rovo CLI          | 5M tokens        |                    |
+| **API 名称**      | **每日免费额度** | **其它说明**             |
+| ----------------- | ---------------- | ------------------------ |
+| Qwen + 魔塔 API   | 2000 次          | 魔塔账号需关联阿里云账户 |
+| Qwen CLI          | 2000 次          |                          |
+| Qwen + OpenRouter | 1000 次          | 账户余额大于 10USD       |
+| Gemini CLI        | 1000 次          | 配置 PROXY_URL           |
+| Rovo CLI          | 5M tokens        |                          |
 
 *注：具体额度可能随官方政策调整，请以实际使用时查询为准。*
 
