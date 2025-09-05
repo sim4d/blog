@@ -16,7 +16,7 @@ https://sim4ai.com/2025/08/claude-code-via-ccr-config2/
 
 ## 1. Gemini CLI 配置
 
-Gemini CLI 的配置方式与 Qwen CLI 类似，操作简单。首先，下载 `gemini-cli.js` 文件，并将其保存至 `$HOME/.claude-code-router/plugins/gemini-cli.js`。随后，在 `$HOME/.claude-code-router/config.json` 中添加相关配置。需要注意以下两点：  
+Gemini CLI 的配置方式与 Qwen CLI 类似，操作简单。首先，下载 `gemini-cli.js` 文件，并将其保存至 `$HOME/.claude-code-router/plugins/gemini-cli.js`。随后，在 `$HOME/.claude-code-router/config.json` 中添加相关配置。需要注意以下几点：  
 
 - 确保 `gemini` 命令行工具已安装，并通过 OAuth 认证，能正常运行。  
 - 在 `config.json` 中正确配置 `PROXY_URL` 字段。
