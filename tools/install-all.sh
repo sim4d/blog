@@ -48,6 +48,10 @@ npm install -g @leason/claude-code-config@latest
 echo "--- Installing qwen-code ---"
 npm install -g @qwen-code/qwen-code@latest
 
+echo "--- Downloading CCR plugins ---"
+mkdir -p "$HOME/.claude-code-router/plugins"
+curl -o "$HOME/.claude-code-router/plugins/qwen-cli.js" https://gist.githubusercontent.com/musistudio/f5a67841ced39912fd99e42200d5ca8b/raw/ca2b5132cbcca5ed558569364e45085732446908/qwen-cli.js
+
 # --- Check for --ext flag ---
 if [ "$1" == "--ext" ]; then
   install_ext
