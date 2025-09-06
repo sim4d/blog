@@ -57,6 +57,7 @@ display_help() {
   echo "run 'ccr code' to start."
   echo "-------------------"
   echo "--- Happy Coding !!! ---"
+  echo
 }
 
 # --- Function to print example of config.json ---
@@ -126,9 +127,15 @@ EOF
 }
 
 
-# --- Check for --ext flag ---
+# --- Check for -- flag ---
 if [ "$1" == "--show_example" ]; then
   display_example
+  exit 0
+fi
+
+# --- Check for -- flag ---
+if [ "$1" == "--help" ]; then
+  display_help
   exit 0
 fi
 
