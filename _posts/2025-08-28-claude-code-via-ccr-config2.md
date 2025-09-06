@@ -232,7 +232,7 @@ https://gist.githubusercontent.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53/raw/8d
 ```bash
 
 curl -o $HOME/install-all.sh https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-all.sh
-chmod +x $HOME/isntall-all.sh
+chmod +x $HOME/install-all.sh
 $HOME/install-all.sh --help
 $HOME/install-all.sh
 

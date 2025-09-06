@@ -230,7 +230,7 @@ ccr code --dangerously-skip-permissions
 ```bash
 
 curl -o $HOME/install-all.sh https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-all.sh
-chmod +x $HOME/isntall-all.sh
+chmod +x $HOME/install-all.sh
 $HOME/install-all.sh --help
 $HOME/install-all.sh
 
