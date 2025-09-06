@@ -224,7 +224,8 @@ ccr code --dangerously-skip-permissions
 
 ## 一键安装脚本 install-all.sh
 
-为方便安装，可以下载 `install-all.sh` ，一键安装这篇文章所讨论的各个模块：
+为方便安装，可以下载 `install-all.sh` ，一键安装这篇文章所讨论的各个模块。
+注：本脚本在 Ubuntu，WSL + Ubuntu 下测试通过。
 
 ```bash
 

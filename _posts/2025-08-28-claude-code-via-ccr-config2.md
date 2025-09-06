@@ -226,7 +226,8 @@ https://gist.githubusercontent.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53/raw/8d
 
 ## 5. 一键安装脚本 install-all.sh
 
-为方便安装，可以下载 `install-all.sh` ，一键安装这两篇文章所讨论的各个模块：
+为方便安装，可以下载 `install-all.sh` ，一键安装这两篇文章所讨论的各个模块。
+注：本脚本在 Ubuntu，WSL + Ubuntu 下测试通过。
 
 ```bash
 
