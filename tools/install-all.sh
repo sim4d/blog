@@ -78,7 +78,6 @@ display_example() {
     }
   ],
   "Providers": [
-  {
     {
       "name": "modelscope",
       "api_base_url": "https://api-inference.modelscope.cn/v1/chat/completions",
