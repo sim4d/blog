@@ -52,8 +52,9 @@ mkdir -p $HOME/.claude-code-router/ && ./install-cli.sh --show_example > \$CFG
 -------------------
 --- 5. IMPORTANT !!!
 -- 5.1 change ALL transformers.path in $HOME/.claude-code-router/config.json with actual \$HOME path
--- 5.2 Add PROXY_URL: "" if needed ---
--- 5.3 change config.json rovodev section: email and credential json ---
+-- 5.2 add PROXY_URL: "" if needed ---
+-- 5.3 rovodev: add email and credential string ---
+-- 5.4 gemini: add transformers.options.project with Google Vertex project-id
 -------------------
 --- 6. Start up ---
 Please run 'source ~/.bashrc' or restart your terminal to use the installed packages.
