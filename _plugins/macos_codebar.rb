@@ -25,7 +25,7 @@ CSS_SNIPPET = <<~CSS
   filter: none !important;
 }
 .highlight pre {
-  overflow-x: auto;
+  overflow-x: auto !important;
 }
 /* Aggressive filter reset on common wrappers to prevent greyscale inheritance */
 figure.highlight, div.highlight, .highlight, .highlight *,
