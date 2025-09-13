@@ -225,7 +225,6 @@ ccr code --dangerously-skip-permissions
 ## 一键安装脚本 install-all.sh
 
 为方便安装，可以下载 `install-all.sh` ，一键安装这篇文章所讨论的各个模块。
-注：本脚本在 Ubuntu，WSL + Ubuntu 下测试通过。
 
 ```bash
 
@@ -235,3 +234,10 @@ $HOME/install-all.sh --help
 $HOME/install-all.sh
 
 ```
+
+#### 注：本脚本在 Ubuntu，WSL + Ubuntu 下测试通过。
+#### 脚本1:
+https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-all.sh
+#### 脚本2：安装CLI
+https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-cli.sh
+
