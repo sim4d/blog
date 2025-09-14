@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Ensure root privileges
-sudo -i
-
 # Exit on any error
 set -e
 
