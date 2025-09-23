@@ -196,6 +196,9 @@ npm install -g @qwen-code/qwen-code@latest
 echo -e "\n--- Installing gemini-cli ---"
 npm install -g @google/gemini-cli@latest
 
+echo -e "\n--- Installing open-codex ---"
+npm install -g open-codex
+
 echo -e "\n--- Installing rovodev-cli ---"
 curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmod +x ./acli && mkdir -p ~/.local/bin && mv ./acli ~/.local/bin/acli
 
