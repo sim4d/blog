@@ -197,8 +197,10 @@ echo -e "\n--- Installing gemini-cli ---"
 npm install -g @google/gemini-cli@latest
 
 echo -e "\n--- Installing rovodev-cli ---"
-# npm install -g rovodev@latest
-echo "goto https://support.atlassian.com/rovo/docs/install-and-run-rovo-dev-cli-on-your-device/ , and deploy rovodev cli"
+curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmod +x ./acli && mkdir -p ~/.local/bin && mv ./acli ~/.local/bin/acli
+
+echo "append (or prepend) ~/.local/bin to \$PATH"
+echo "goto https://support.atlassian.com/rovo/docs/install-and-run-rovo-dev-cli-on-your-device/ , and register and obtain credential"
 
 echo -e "\n--- Installing codebuddy-code ---"
 npm install -g @tencent-ai/codebuddy-code
