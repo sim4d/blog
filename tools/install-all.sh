@@ -141,7 +141,7 @@ fi
 # --- Main installation process (default) ---
 new_section
 echo "--- Installing nvm ---"
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 
 echo -e "\n --- Sourcing nvm ---"
 export NVM_DIR="$HOME/.nvm"
