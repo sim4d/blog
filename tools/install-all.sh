@@ -150,8 +150,8 @@ export NVM_DIR="$HOME/.nvm"
 
 echo -e "\n --- Installing and using LTS version of Node.js ---"
 nvm install --lts
-nvm use --lts
 nvm alias default 'lts/*'
+nvm use --lts
 
 echo -e "\n --- Installing npm v11.5.2 ---"
 npm install -g npm@11.5.2
