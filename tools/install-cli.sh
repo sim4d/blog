@@ -196,8 +196,8 @@ npm install -g @qwen-code/qwen-code@latest
 echo -e "\n--- Installing gemini-cli ---"
 npm install -g @google/gemini-cli@latest
 
-echo -e "\n--- Installing open-codex ---"
-npm install -g open-codex
+# echo -e "\n--- Installing open-codex ---"
+# npm install -g open-codex
 
 echo -e "\n--- Installing openai/codex ---"
 npm install -g @openai/codex
