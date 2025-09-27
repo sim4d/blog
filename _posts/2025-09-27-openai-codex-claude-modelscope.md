@@ -76,6 +76,7 @@ codex
 ```bash
 curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-codex.sh
 
+# 查看脚本使用说明
 bash ./install-codex.sh --help
 ```
 
@@ -117,6 +118,7 @@ claude --settings $HOME/.claude/settings.json-mscope
 ```bash
 curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-claude.sh
 
+# 查看脚本使用说明
 bash ./install-claude.sh --help
 
 ```
