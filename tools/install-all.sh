@@ -43,10 +43,10 @@ display_help() {
   echo "--- 登录 qwen-cli，选择 qwen Oauth 登录，走完登录流程 ---"
   echo "-------------------"
   echo "--- 3. 显示 config.json 示例 ---"
-  echo "--- $ ./install-all.sh --show_example"
+  echo "--- $ $0 --show_example"
   echo "- Or ------------------"
-  echo '--- $ CFG=$HOME/.claude-code-router/config.json && [ -f $CFG ] && cp $CFG $CFG-$(date +%Y%m%d-%H%M%S)'
-  echo '--- $ mkdir -p $HOME/.claude-code-router/ && ./install-all.sh --show_example >$HOME/.claude-code-router/config.json'
+  echo "--- $ CFG=$HOME/.claude-code-router/config.json && [ -f \$CFG ] && cp \$CFG \$CFG-\$(date +%Y%m%d-%H%M%S)"
+  echo "--- $ mkdir -p $HOME/.claude-code-router/ && $0 --show_example >$HOME/.claude-code-router/config.json"
   echo "-------------------"
   echo "--- 4. 编辑/修改 魔塔 API ---"
   echo "-------------------"

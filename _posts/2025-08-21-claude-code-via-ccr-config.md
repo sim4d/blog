@@ -237,7 +237,6 @@ $HOME/install-all.sh
 
 #### 注：本脚本在 Ubuntu，WSL + Ubuntu 下测试通过。
 #### 脚本1:
-https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-all.sh
+curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-all.sh
 #### 脚本2：安装CLI
-https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-cli.sh
-
+curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-cli.sh

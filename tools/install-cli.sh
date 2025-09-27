@@ -28,10 +28,10 @@ display_help() {
 --- 登录 acli rovodev ，输入邮件和密文，走完登录流程 ---
 -------------------
 --- 4. 显示 config.json 示例 ---
---- $ ./install-cli.sh --show_example
+--- $ $0 --show_example
 - Or ------------------
 export CFG=$HOME/.claude-code-router/config.json && [ -f \$CFG ] && cp \$CFG \$CFG-\$(date +%Y%m%d-%H%M%S)
-mkdir -p $HOME/.claude-code-router/ && ./install-cli.sh --show_example > \$CFG
+mkdir -p $HOME/.claude-code-router/ && $0 --show_example > \$CFG
 -------------------
 --- 5. IMPORTANT !!!
 -- 5.1 change ALL transformers.path in $HOME/.claude-code-router/config.json with actual \$HOME path
