@@ -7,7 +7,7 @@ tags: [Claude Code, OpenAI Codex]
 ---
 
 
-# OpenAI Codex 和 Anthropic Claude 使用魔塔 API
+# OpenAI Codex 和 Anthropic Claude 配置使用魔塔 API
 
 OpenAI Codex 作为一款快速进化的命令行编程辅助代理，近期新增了第三方模型 API 接口支持，功能更加强大。魔塔社区也推出了针对 Anthropic Claude 的 API 调用 URL（目前处于 Beta 阶段），为用户提供更便捷的配置方式，跳过复杂易错的 CCR 配置流程。本文将简要介绍 OpenAI Codex 和 Anthropic Claude 使用魔塔 API 的安装与配置步骤，并提供一键安装脚本，助您高效上手。
 
@@ -76,7 +76,7 @@ codex
 ```bash
 curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-codex.sh
 
-./install-codex.sh --help
+bash ./install-codex.sh --help
 ```
 
 ## Claude 配置使用魔塔 API 
@@ -117,7 +117,7 @@ claude --settings $HOME/.claude/settings.json-mscope
 ```bash
 curl -LO https://raw.githubusercontent.com/sim4d/blog/refs/heads/main/tools/install-claude.sh
 
-./install-claude.sh --help
+bash ./install-claude.sh --help
 
 ```
 
