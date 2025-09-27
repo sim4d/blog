@@ -74,7 +74,7 @@ display_example() {
   "PROXY_URL": "",
   "transformers": [
     {
-      "path": "/home/user/.claude-code-router/plugins/qwen-cli.js"
+      "path": "$HOME/.claude-code-router/plugins/qwen-cli.js"
     }
   ],
   "Providers": [

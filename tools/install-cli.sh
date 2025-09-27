@@ -67,16 +67,16 @@ display_example() {
   "PROXY_URL": "",
   "transformers": [
     {
-      "path": "/home/wsl/.claude-code-router/plugins/qwen-cli.js"
+      "path": "$HOME/.claude-code-router/plugins/qwen-cli.js"
     },
     {
-      "path": "/home/wsl/.claude-code-router/plugins/gemini-cli.js",
+      "path": "$HOME/.claude-code-router/plugins/gemini-cli.js",
       "options": {
         "project": "your-google-cloud-project-id"
       }
     },
     {
-      "path": "/home/wsl/.claude-code-router/plugins/rovo-cli.js",
+      "path": "$HOME/.claude-code-router/plugins/rovo-cli.js",
       "options": {
         "email": "ROVO_DEV_EMAIL",
         "api_token": "ROVO_DEV_API_TOKEN"
