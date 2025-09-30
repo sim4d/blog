@@ -56,7 +56,8 @@ display_help() {
   echo "run 'ccr restart' to take effect with new configuration"
   echo "run 'ccr code' to start."
   echo "-------------------"
-  echo "--- Happy Coding !!! ---"
+  echo "--- Happy coding! 🚀 "
+  echo "-------------------"
   echo
 }
 

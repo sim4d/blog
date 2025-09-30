@@ -37,7 +37,7 @@ vi $HOME/.claude/settings.json-mscope
 claude --settings ~/.claude/settings.json-mscope
 
 ------------------------
---- Happy Coding !!! ---
+--- Happy coding! 🚀
 ------------------------
 
 EOF

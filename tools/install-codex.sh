@@ -48,7 +48,7 @@ run 'source ~/.bashrc' or restart your terminal to use the installed packages.
 run 'codex' 
 
 ------------------------
---- Happy Coding !!! ---
+--- Happy coding! 🚀
 ------------------------
 
 EOF

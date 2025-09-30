@@ -46,7 +46,7 @@ run 'ccr restart' to take effect with new configuration
 run 'ccr code' to start.
 
 ------------------------
---- Happy Coding !!! ---
+--- Happy coding! 🚀
 ------------------------
 
 EOF
