@@ -178,8 +178,8 @@ nvm install --lts
 nvm alias default 'lts/*'
 nvm use --lts
 
-echo -e "\n --- Installing npm v11.5.2 ---"
-npm install -g npm@11.5.2
+echo -e "\n --- Installing npm v11.6.2 ---"
+npm install -g npm@11.6.2
 
 echo -e "\n --- Installing Claude Code ---"
 npm install -g @anthropic-ai/claude-code@latest
@@ -201,6 +201,9 @@ npm install -g @openai/codex
 
 echo -e "\n--- Installing cursor-agent ---"
 curl https://cursor.com/install -fsS | bash
+
+echo -e "\n--- Installing qoder cli---"
+curl -fsSL https://qoder.com/install | bash
 
 echo -e "\n--- Installing rovodev-cli ---"
 curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmod +x ./acli && mkdir -p ~/.local/bin && mv ./acli ~/.local/bin/acli
