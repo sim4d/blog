@@ -206,7 +206,7 @@ echo -e "\n--- Installing qoder cli---"
 curl -fsSL https://qoder.com/install | bash
 
 echo -e "\n--- Installing iflow cli---"
-npm i -g @iflow-ai/iflow-cli
+npm install -g @iflow-ai/iflow-cli
 
 echo -e "\n--- Installing rovodev-cli ---"
 curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmod +x ./acli && mkdir -p ~/.local/bin && mv ./acli ~/.local/bin/acli
