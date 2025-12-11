@@ -1,5 +1,6 @@
 ---
 # the default layout is 'page'
+title: More Resources
 icon: fas fa-stream
 order: 5
 ---
