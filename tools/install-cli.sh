@@ -202,8 +202,8 @@ npm install -g @openai/codex
 echo -e "\n--- Installing cursor-agent ---"
 curl https://cursor.com/install -fsS | bash
 
-echo -e "\n--- Installing qoder cli---"
-curl -fsSL https://qoder.com/install | bash
+#echo -e "\n--- Installing qoder cli---"
+#curl -fsSL https://qoder.com/install | bash
 
 echo -e "\n--- Installing iflow cli---"
 npm install -g @iflow-ai/iflow-cli
