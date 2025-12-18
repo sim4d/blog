@@ -190,6 +190,13 @@ npm install -g @musistudio/claude-code-router@latest
 echo -e "\n --- Installing claude-code-config ---"
 npm install -g @leason/claude-code-config@latest
 
+echo -e "\n --- Downloading CCR plugins ---"
+
+mkdir -p "$HOME/.claude-code-router/plugins"
+curl -o "$HOME/.claude-code-router/plugins/qwen-cli.js" https://gist.githubusercontent.com/musistudio/f5a67841ced39912fd99e42200d5ca8b/raw/ca2b5132cbcca5ed558569364e45085732446908/qwen-cli.js
+curl -o "$HOME/.claude-code-router/plugins/gemini-cli.js" https://gist.githubusercontent.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd/raw/9d9a627783990a602d8a887c02dba0ba507e6339/gemini-cli.js
+curl -o "$HOME/.claude-code-router/plugins/rovo-cli.js" https://gist.githubusercontent.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53/raw/8d919f7102324ba2243105c2c0bd6ffa4b396091/rovo-cli.js
+
 echo -e "\n --- Installing qwen-code ---"
 npm install -g @qwen-code/qwen-code@latest
 
@@ -199,8 +206,8 @@ npm install -g @google/gemini-cli@latest
 echo -e "\n--- Installing openai/codex ---"
 npm install -g @openai/codex
 
-echo -e "\n--- Installing cursor-agent ---"
-curl https://cursor.com/install -fsS | bash
+#echo -e "\n--- Installing cursor-agent ---"
+#curl https://cursor.com/install -fsS | bash
 
 #echo -e "\n--- Installing qoder cli---"
 #curl -fsSL https://qoder.com/install | bash
@@ -208,8 +215,8 @@ curl https://cursor.com/install -fsS | bash
 echo -e "\n--- Installing iflow cli---"
 npm install -g @iflow-ai/iflow-cli
 
-echo -e "\n--- Installing kilocode cli---"
-npm install -g @kilocode/cli
+#echo -e "\n--- Installing kilocode cli---"
+#npm install -g @kilocode/cli
 
 echo -e "\n--- Installing rovodev-cli ---"
 curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmod +x ./acli && mkdir -p ~/.local/bin && mv ./acli ~/.local/bin/acli
@@ -217,16 +224,11 @@ curl -LO "https://acli.atlassian.com/linux/latest/acli_linux_amd64/acli" && chmo
 echo "append (or prepend) ~/.local/bin to \$PATH"
 echo "goto https://support.atlassian.com/rovo/docs/install-and-run-rovo-dev-cli-on-your-device/ , and register and obtain credential"
 
-echo -e "\n--- Installing codebuddy-code ---"
-npm install -g @tencent-ai/codebuddy-code
+#echo -e "\n--- Installing codebuddy-code ---"
+#npm install -g @tencent-ai/codebuddy-code
 
-echo -e "\n --- Downloading CCR plugins ---"
-
-mkdir -p "$HOME/.claude-code-router/plugins"
-curl -o "$HOME/.claude-code-router/plugins/qwen-cli.js" https://gist.githubusercontent.com/musistudio/f5a67841ced39912fd99e42200d5ca8b/raw/ca2b5132cbcca5ed558569364e45085732446908/qwen-cli.js
-
-curl -o "$HOME/.claude-code-router/plugins/gemini-cli.js" https://gist.githubusercontent.com/musistudio/1c13a65f35916a7ab690649d3df8d1cd/raw/9d9a627783990a602d8a887c02dba0ba507e6339/gemini-cli.js
-curl -o "$HOME/.claude-code-router/plugins/rovo-cli.js" https://gist.githubusercontent.com/SaseQ/c2a20a38b11276537ec5332d1f7a5e53/raw/8d919f7102324ba2243105c2c0bd6ffa4b396091/rovo-cli.js
+echo -e "\n--- Installing chrome-devtools ---"
+npm install -g chrome-devtools@latest
 
 display_help
 
