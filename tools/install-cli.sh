@@ -174,7 +174,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 echo -e "\n --- Installing and using LTS version of Node.js ---"
-nvm install --lts
+#nvm install --lts
 nvm alias default 'lts/*'
 nvm use --lts
 
