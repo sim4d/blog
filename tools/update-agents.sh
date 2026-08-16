@@ -11,7 +11,8 @@ fi
 
 MAX_RETRIES=3
 
-# dsh-code global/profile parity signal. Tri-state, set by sync_dsh_code_profile:
+# dsh profile parity signals. Tri-state, set by sync_dsh_profile for the
+# profile-backed dsh CLIs (dsh-code, dsh-tui):
 #   0 = confirmed parity (global == profile resolved version)
 #   1 = skew detected (pin attempted but did not converge)
 #   2 = unverified (default; sync skipped, e.g. `npm view` failed or global missing)
@@ -19,6 +20,7 @@ MAX_RETRIES=3
 # is a non-fatal warning so a transient registry hiccup can't force a false
 # "skew" exit like the original single boolean did.
 DSH_CODE_PARITY_STATE=2
+DSH_TUI_PARITY_STATE=2
 
 # npm-manageable packages
 # PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qoder-ai/qodercli")
@@ -41,10 +43,10 @@ get_bin_name() {
 }
 
 # ---------------------------------------------------------------------------
-# dsh-code version-parity sync.
+# dsh profile version-parity sync.
 #
-# `dsh-code` is a global alias for `dsh --profile cli`, but its runtime is
-# composed from TWO copies that MUST stay at the same version:
+# The profile-backed dsh CLIs (`dsh-code`, `dsh-tui`) are global binaries whose
+# runtime is composed from TWO copies that MUST stay at the same version:
 #
 #   * the cordis patch layer (which disables host-plane tools/skills in favor
 #     of per-session agent presets) is read from the GLOBAL install — the dsh
@@ -52,11 +54,12 @@ get_bin_name() {
 #   * the TUI runner that re-mounts those presets is read from the PROFILE's
 #     own node_modules (the loader's baseUrl is the profile directory).
 #
-# If they skew, every session boots with zero tools and zero skills while
-# `dsh-code --version` still exits 0 — it only exercises the launcher's
-# profile-mount check, never the composed tree — so the generic binary health
-# check can never catch this failure. Keep the profile runner pinned to the
-# exact version of the global install.
+# If they skew, the session boots broken: `dsh-code` loads zero tools/skills
+# while `--version` still exits 0 (it only exercises the launcher's
+# profile-mount check, never the composed tree), and `dsh-tui` fails outright
+# with a module-resolution error (so `--version` exits 1). The generic binary
+# health check alone cannot repair either — the profile runner must be pinned
+# to the exact version of the global install.
 # ---------------------------------------------------------------------------
 # Read a package.json's `version` field safely: a missing file, malformed
 # JSON, or a missing `version` key all yield empty (a bare `require().version`
@@ -65,70 +68,111 @@ read_pkg_version() {
     node -e 'const v=require(process.argv[1]).version;process.stdout.write(typeof v==="string"?v:"")' "$1" 2>/dev/null
 }
 
-# Read the profile manifest's `dsh-code` dependency SPEC (may be exact "0.7.0"
+# Read a profile manifest's dependency SPEC for a key (may be exact "0.7.0"
 # or a caret range "^0.7.0"); empty when absent or unreadable.
-read_pkg_spec() {
-    node -e 'const j=require(process.argv[1]);const s=(j.dependencies||{})["dsh-code"];process.stdout.write(typeof s==="string"?s:"")' "$1" 2>/dev/null
+read_pkg_spec() {  # $1 = pkgjson, $2 = dep key
+    node -e 'const j=require(process.argv[1]);const s=(j.dependencies||{})[process.argv[2]];process.stdout.write(typeof s==="string"?s:"")' "$1" "$2" 2>/dev/null
 }
 
-# Rewrite the profile's `dsh-code` dependency spec to an exact version,
-# tolerating a manifest with no `dependencies` block at all (which would
-# otherwise make `j.dependencies["dsh-code"]=` throw a TypeError).
-pin_dsh_code_spec() {  # $1 = profile_dir, $2 = version
-    node -e 'const p=process.argv[1],v=process.argv[2];const j=require(p);(j.dependencies=j.dependencies||{})["dsh-code"]=v;require("fs").writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$1/package.json" "$2"
+# Rewrite a profile's dependency spec to an exact version, tolerating a
+# manifest with no `dependencies` block at all (which would otherwise make
+# `j.dependencies[k]=` throw a TypeError).
+pin_dsh_spec() {  # $1 = profile_dir, $2 = dep key, $3 = version
+    node -e 'const p=process.argv[1],k=process.argv[2],v=process.argv[3];const j=require(p);(j.dependencies=j.dependencies||{})[k]=v;require("fs").writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$1/package.json" "$2" "$3"
 }
 
-sync_dsh_code_profile() {
+# Map a PACKAGES entry to its dsh profile name (dir under <dsh_home>/profiles),
+# empty when the package is not profile-backed.
+dsh_profile_name() {
+    case "$1" in
+        dsh-code)                       echo "cli" ;;
+        @deepseek-harness-tui/dsh-tui)  echo "dsh-tui" ;;
+        *)                              echo "" ;;
+    esac
+}
+
+# Map a PACKAGES entry to its dsh parity state variable name (empty if the
+# package is not profile-backed).
+dsh_parity_state_var() {
+    case "$1" in
+        dsh-code)                       echo "DSH_CODE_PARITY_STATE" ;;
+        @deepseek-harness-tui/dsh-tui)  echo "DSH_TUI_PARITY_STATE" ;;
+        *)                              echo "" ;;
+    esac
+}
+
+# Echo the parity state (0/1/2) for a profile-backed package; empty when the
+# package is not profile-backed (so callers can branch on -n first).
+dsh_parity_state() {
+    local var; var="$(dsh_parity_state_var "$1")"
+    [ -z "$var" ] && return 0
+    printf '%s' "${!var}"
+}
+
+# Sync the profile runner for one profile-backed package to the global
+# install's version. $1 = pkg (npm name + dep key), $2 = profile name,
+# $3 = state variable name to receive the tri-state parity result.
+sync_dsh_profile() {
+    local pkg="$1" profile="$2" state_var="$3"
     local global_ver profile_ver after_ver spec
-    local profile_dir="$(dsh_home)/profiles/cli"
+    local profile_dir="$(dsh_home)/profiles/$profile"
     local global_pkg_json
 
     # 0 = confirmed parity, 1 = skew detected, 2 = unverified (default).
-    DSH_CODE_PARITY_STATE=2
+    printf -v "$state_var" '%s' 2
 
-    global_pkg_json="$(npm root -g 2>/dev/null)/dsh-code/package.json"
+    global_pkg_json="$(npm root -g 2>/dev/null)/$pkg/package.json"
     global_ver="$(read_pkg_version "$global_pkg_json")"
     if [ -z "$global_ver" ]; then
-        echo " [!] dsh-code: cannot determine global version — parity left unverified."
+        echo " [!] $pkg: cannot determine global version — parity left unverified."
         return 1
     fi
 
-    profile_ver="$(read_pkg_version "$profile_dir/node_modules/dsh-code/package.json")"
+    profile_ver="$(read_pkg_version "$profile_dir/node_modules/$pkg/package.json")"
 
     if [ "$profile_ver" = "$global_ver" ]; then
-        echo " [✓] dsh-code: profile runner $global_ver matches global bundle."
+        echo " [✓] $pkg: profile runner $global_ver matches global bundle."
         # The resolved version matches, but the SPEC may still be a caret range
         # (e.g. ^0.7.0) that a later bare `pnpm install` in the profile could
         # drift within. Normalize it to the exact version when it isn't already.
-        spec="$(read_pkg_spec "$profile_dir/package.json")"
+        spec="$(read_pkg_spec "$profile_dir/package.json" "$pkg")"
         if [ "$spec" != "$global_ver" ]; then
-            if pin_dsh_code_spec "$profile_dir" "$global_ver"; then
-                echo " [✓] dsh-code: profile spec pinned to exact $global_ver (was ${spec:-<none>})."
+            if pin_dsh_spec "$profile_dir" "$pkg" "$global_ver"; then
+                echo " [✓] $pkg: profile spec pinned to exact $global_ver (was ${spec:-<none>})."
             else
-                echo " [!] dsh-code: could not pin profile spec to $global_ver."
+                echo " [!] $pkg: could not pin profile spec to $global_ver."
             fi
         fi
-        DSH_CODE_PARITY_STATE=0
+        printf -v "$state_var" '%s' 0
         return 0
     fi
 
-    echo " [!] dsh-code: version skew (global $global_ver vs profile ${profile_ver:-<not mounted>}) — pinning profile to $global_ver."
+    echo " [!] $pkg: version skew (global $global_ver vs profile ${profile_ver:-<not mounted>}) — pinning profile to $global_ver."
     # pnpm only honors --save-exact on a FRESH add; upgrading an existing
     # "^x.y.z" spec preserves the caret, and `dsh plugin add` can exit non-zero
     # even after converging (or exit 0 without converging). So run the add/spec
     # pin as best effort, then re-read the RESOLVED version afterwards — trust
     # nothing from exit codes alone, on either the success or failure path.
-    dsh plugin --profile cli add "dsh-code@${global_ver}" --save-exact 2>&1 \
-        && pin_dsh_code_spec "$profile_dir" "$global_ver"
-    after_ver="$(read_pkg_version "$profile_dir/node_modules/dsh-code/package.json")"
+    dsh plugin --profile "$profile" add "$pkg@${global_ver}" --save-exact 2>&1 \
+        && pin_dsh_spec "$profile_dir" "$pkg" "$global_ver"
+    after_ver="$(read_pkg_version "$profile_dir/node_modules/$pkg/package.json")"
     if [ "$after_ver" = "$global_ver" ]; then
-        echo " [✓] dsh-code: profile runner verified at $global_ver."
-        DSH_CODE_PARITY_STATE=0
+        echo " [✓] $pkg: profile runner verified at $global_ver."
+        printf -v "$state_var" '%s' 0
         return 0
     fi
-    echo " [✗] dsh-code: pin did not converge (resolved ${after_ver:-<none>} != $global_ver)."
-    DSH_CODE_PARITY_STATE=1
+    echo " [✗] $pkg: pin did not converge (resolved ${after_ver:-<none>} != $global_ver)."
+    printf -v "$state_var" '%s' 1
     return 1
+}
+
+# Sync parity for a profile-backed dsh package; a no-op for plain npm CLIs.
+sync_pkg_profile() {  # $1 = pkg
+    local profile state_var
+    profile="$(dsh_profile_name "$1")"
+    [ -z "$profile" ] && return 0
+    state_var="$(dsh_parity_state_var "$1")"
+    sync_dsh_profile "$1" "$profile" "$state_var"
 }
 
 # ---------------------------------------------------------------------------
@@ -264,7 +308,7 @@ npm_install_with_retry() {
 # during upgrade — npm silently skips optional dependencies).
 verify_cli_binary() {
     local pkg="$1"
-    local bin_name
+    local bin_name pkg_profile pkg_state
 
     bin_name=$(get_bin_name "$pkg")
 
@@ -276,13 +320,16 @@ verify_cli_binary() {
 
     echo " [!] $bin_name health check FAILED — likely missing native binary."
 
-    # dsh-code is a global alias for `dsh --profile cli`; a plain npm install
+    # Profile-backed dsh CLIs (`dsh-code`, `dsh-tui`) compose their runtime
+    # from the GLOBAL install plus the PROFILE's own copy; a plain npm install
     # cannot complete the setup — the plugin must also be registered with the
     # profile, pinned to the global version. Do that first, since no amount of
     # re-installing will help.
-    if [ "$pkg" = "dsh-code" ]; then
-        sync_dsh_code_profile
-        if [ "$DSH_CODE_PARITY_STATE" -eq 0 ] && "$bin_name" --version >/dev/null 2>&1; then
+    pkg_profile="$(dsh_profile_name "$pkg")"
+    if [ -n "$pkg_profile" ]; then
+        sync_pkg_profile "$pkg"
+        pkg_state="$(dsh_parity_state "$pkg")"
+        if [ "$pkg_state" = "0" ] && "$bin_name" --version >/dev/null 2>&1; then
             echo " [✓] Plugin registration succeeded: $bin_name --version OK"
             VERIFY_OK=0
             return 0
@@ -294,16 +341,10 @@ verify_cli_binary() {
     npm_install_with_retry "$pkg"
     if [ "$NPM_INSTALL_OK" -eq 0 ] && "$bin_name" --version >/dev/null 2>&1; then
         # A global reinstall can resolve a DIFFERENT version than the profile
-        # was just pinned to, silently re-opening the skew. Re-sync for dsh-code
-        # before declaring success; never trust the parity flag across a reinstall.
-        if [ "$pkg" = "dsh-code" ]; then
-            sync_dsh_code_profile
-            if [ "$DSH_CODE_PARITY_STATE" -ne 0 ]; then
-                echo " [✗] dsh-code: post-reinstall parity still not confirmed."
-                VERIFY_OK=1
-                return 1
-            fi
-        fi
+        # was just pinned to, silently re-opening the skew. Re-sync for
+        # profile-backed dsh CLIs before returning; the final summary owns the
+        # verdict from the fresh parity state (0/1/2), so do not fail here.
+        sync_pkg_profile "$pkg"
         echo " [✓] Reinstall succeeded: $bin_name --version OK"
         VERIFY_OK=0
         return 0
@@ -329,6 +370,10 @@ verify_cli_binary() {
         (cd "$pkg_dir" && npm run postinstall --if-present) 2>&1
     fi
     if "$bin_name" --version >/dev/null 2>&1; then
+        # Postinstall repair re-fetches just the native binary; it does not
+        # change versions, but the earlier failed sync may have left parity
+        # unresolved, so re-verify before declaring the binary healthy.
+        sync_pkg_profile "$pkg"
         echo " [✓] Postinstall repair succeeded: $bin_name --version OK"
         VERIFY_OK=0
         return 0
@@ -339,6 +384,11 @@ verify_cli_binary() {
     npm uninstall -g "$pkg" 2>&1
     npm_install_with_retry "$pkg"
     if [ "$NPM_INSTALL_OK" -eq 0 ] && "$bin_name" --version >/dev/null 2>&1; then
+        # A clean `npm install -g` resolves the LATEST published version, which
+        # may have moved past the one the profile runner was pinned to. Re-sync
+        # parity before returning — never trust the state var across a
+        # reinstall. The final summary owns the verdict from the fresh state.
+        sync_pkg_profile "$pkg"
         echo " [✓] Clean reinstall succeeded: $bin_name --version OK"
         VERIFY_OK=0
         return 0
@@ -387,9 +437,9 @@ for PACKAGE in "${PACKAGES[@]}"; do
         echo " -> Installing..."
         npm_install_with_retry "$PACKAGE"
         if [ "$NPM_INSTALL_OK" -eq 0 ]; then
-            # dsh-code's profile runner must be pinned to this fresh global
-            # version BEFORE the binary is trusted as healthy.
-            [ "$PACKAGE" = "dsh-code" ] && sync_dsh_code_profile
+            # A profile-backed CLI's profile runner must be pinned to this fresh
+            # global version BEFORE the binary is trusted as healthy.
+            sync_pkg_profile "$PACKAGE"
             verify_cli_binary "$PACKAGE"
         fi
         continue
@@ -400,6 +450,11 @@ for PACKAGE in "${PACKAGES[@]}"; do
     LATEST_VERSION=$(npm view "$PACKAGE" version 2>/dev/null)
     if [ -z "$LATEST_VERSION" ]; then
         echo " [!] Could not fetch latest version for $PACKAGE."
+        # Parity sync does NOT depend on `npm view` — it reads the installed
+        # global bundle and the profile runner directly. Still run it so a
+        # registry hiccup can't mask a real skew (which would otherwise be
+        # left in the default "unverified" state and reported as exit 0).
+        sync_pkg_profile "$PACKAGE"
         continue
     fi
 
@@ -421,18 +476,17 @@ for PACKAGE in "${PACKAGES[@]}"; do
         npm_install_with_retry "$PACKAGE"
         if [ "$NPM_INSTALL_OK" -eq 0 ]; then
             # Re-pin the profile runner to the freshly upgraded global version.
-            [ "$PACKAGE" = "dsh-code" ] && sync_dsh_code_profile
+            sync_pkg_profile "$PACKAGE"
             verify_cli_binary "$PACKAGE"
         fi
     else
         # Even if up to date, verify the binary works — a previous
-        # install may have silently skipped the native binary. For dsh-code,
-        # also re-check version parity: a skew leaves --version green but the
-        # session with zero tools/skills, so it must be caught here, not in
-        # verify_cli_binary's failure path.
-        if [ "$PACKAGE" = "dsh-code" ]; then
-            sync_dsh_code_profile
-        fi
+        # install may have silently skipped the native binary. For
+        # profile-backed dsh CLIs, also re-check version parity: a skew leaves
+        # --version green (dsh-code) yet the session with zero tools/skills, or
+        # hard-fails (dsh-tui) with a module-resolution error — so it must be
+        # caught here, not in verify_cli_binary's failure path.
+        sync_pkg_profile "$PACKAGE"
         verify_cli_binary "$PACKAGE"
     fi
 done
@@ -447,13 +501,15 @@ echo "=== Final health check summary ==="
 FAILED_CLIS=()
 for PACKAGE in "${PACKAGES[@]}"; do
     BIN_NAME=$(get_bin_name "$PACKAGE")
-    # dsh-code additionally requires global/profile version parity; a skew
-    # leaves --version green but the session unusable, so treat it as broken.
-    if [ "$PACKAGE" = "dsh-code" ] && [ "$DSH_CODE_PARITY_STATE" -eq 1 ]; then
+    # Profile-backed dsh CLIs additionally require global/profile version
+    # parity; a skew leaves the session unusable (zero tools/skills, or a hard
+    # module-resolution failure), so treat a parity failure as broken.
+    PROFILED=$(dsh_profile_name "$PACKAGE")
+    if [ -n "$PROFILED" ] && [ "$(dsh_parity_state "$PACKAGE")" = "1" ]; then
         echo " [✗] $BIN_NAME: BROKEN (global/profile version skew)"
         FAILED_CLIS+=("$BIN_NAME")
     elif command -v "$BIN_NAME" >/dev/null 2>&1 && "$BIN_NAME" --version >/dev/null 2>&1; then
-        if [ "$PACKAGE" = "dsh-code" ] && [ "$DSH_CODE_PARITY_STATE" -eq 2 ]; then
+        if [ -n "$PROFILED" ] && [ "$(dsh_parity_state "$PACKAGE")" = "2" ]; then
             echo " [•] $BIN_NAME: UNVERIFIED (parity check skipped — registry/resolution unavailable)"
         else
             VERSION=$("$BIN_NAME" --version 2>/dev/null | head -1)
