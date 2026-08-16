@@ -22,7 +22,7 @@ DSH_CODE_PARITY_STATE=2
 
 # npm-manageable packages
 # PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qoder-ai/qodercli")
-PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui" "dsh-code")
+PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui" "dsh-code" "@xai-official/grok")
 
 # Resolve binary name for a package (basename is wrong for some scoped packages).
 # IMPORTANT: When adding a new package to PACKAGES, also add it here.
@@ -35,6 +35,7 @@ get_bin_name() {
         @deepseek-ai/dsh)         echo "dsh" ;;
         @deepseek-harness-tui/dsh-tui) echo "dsh-tui" ;;
         dsh-code)                    echo "dsh-code" ;;
+        @xai-official/grok)       echo "grok" ;;
         *)                         basename "$1" ;;
     esac
 }
@@ -79,7 +80,7 @@ pin_dsh_code_spec() {  # $1 = profile_dir, $2 = version
 
 sync_dsh_code_profile() {
     local global_ver profile_ver after_ver spec
-    local profile_dir="$HOME/.dsh/profiles/cli"
+    local profile_dir="$(dsh_home)/profiles/cli"
     local global_pkg_json
 
     # 0 = confirmed parity, 1 = skew detected, 2 = unverified (default).
@@ -101,8 +102,11 @@ sync_dsh_code_profile() {
         # drift within. Normalize it to the exact version when it isn't already.
         spec="$(read_pkg_spec "$profile_dir/package.json")"
         if [ "$spec" != "$global_ver" ]; then
-            pin_dsh_code_spec "$profile_dir" "$global_ver"
-            echo " [✓] dsh-code: profile spec pinned to exact $global_ver (was ${spec:-<none>})."
+            if pin_dsh_code_spec "$profile_dir" "$global_ver"; then
+                echo " [✓] dsh-code: profile spec pinned to exact $global_ver (was ${spec:-<none>})."
+            else
+                echo " [!] dsh-code: could not pin profile spec to $global_ver."
+            fi
         fi
         DSH_CODE_PARITY_STATE=0
         return 0
@@ -110,25 +114,19 @@ sync_dsh_code_profile() {
 
     echo " [!] dsh-code: version skew (global $global_ver vs profile ${profile_ver:-<not mounted>}) — pinning profile to $global_ver."
     # pnpm only honors --save-exact on a FRESH add; upgrading an existing
-    # "^x.y.z" spec preserves the caret, and `dsh plugin add` can exit 0 without
-    # converging the tree (e.g. an existing ^0.x range is considered satisfied).
-    # So normalize the spec AND re-read the RESOLVED version afterwards — trust
-    # nothing from exit codes alone.
-    if dsh plugin --profile cli add "dsh-code@${global_ver}" --save-exact 2>&1 \
+    # "^x.y.z" spec preserves the caret, and `dsh plugin add` can exit non-zero
+    # even after converging (or exit 0 without converging). So run the add/spec
+    # pin as best effort, then re-read the RESOLVED version afterwards — trust
+    # nothing from exit codes alone, on either the success or failure path.
+    dsh plugin --profile cli add "dsh-code@${global_ver}" --save-exact 2>&1 \
         && pin_dsh_code_spec "$profile_dir" "$global_ver"
-    then
-        after_ver="$(read_pkg_version "$profile_dir/node_modules/dsh-code/package.json")"
-        if [ "$after_ver" = "$global_ver" ]; then
-            echo " [✓] dsh-code: profile pinned and verified at $global_ver."
-            DSH_CODE_PARITY_STATE=0
-            return 0
-        fi
-        echo " [✗] dsh-code: pin did not converge (resolved ${after_ver:-<none>} != $global_ver)."
-        DSH_CODE_PARITY_STATE=1
-        return 1
+    after_ver="$(read_pkg_version "$profile_dir/node_modules/dsh-code/package.json")"
+    if [ "$after_ver" = "$global_ver" ]; then
+        echo " [✓] dsh-code: profile runner verified at $global_ver."
+        DSH_CODE_PARITY_STATE=0
+        return 0
     fi
-
-    echo " [✗] dsh-code: failed to pin profile to $global_ver."
+    echo " [✗] dsh-code: pin did not converge (resolved ${after_ver:-<none>} != $global_ver)."
     DSH_CODE_PARITY_STATE=1
     return 1
 }
@@ -147,9 +145,15 @@ sync_dsh_code_profile() {
 #     the user preset root; no npm package exists for it.
 # ---------------------------------------------------------------------------
 
+# The dsh home root; DSH_HOME overrides the default $HOME/.dsh. The profile,
+# preset root, and update cache must all derive from this same dsh home.
+dsh_home() {
+    echo "${DSH_HOME:-$HOME/.dsh}"
+}
+
 # The user preset root dsh-agent-presets derives (<dshHome>/.agent-presets).
 dsh_preset_root() {
-    echo "${DSH_HOME:-$HOME/.dsh}/.agent-presets"
+    echo "$(dsh_home)/.agent-presets"
 }
 
 # Atomically replace a preset directory with a fresh copy from a source dir, so
@@ -159,9 +163,16 @@ install_preset_dir() {  # $1 = src_dir, $2 = dst_dir
     local tmp="${2}.tmp.$$"
     rm -rf "$tmp"
     if cp -R "$1" "$tmp" 2>&1; then
+        # Refuse symlinks so a remote preset cannot escape the preset directory
+        # into files readable by the user (cp -R preserves symlinks).
+        if find "$tmp" -type l -print -quit 2>/dev/null | grep -q .; then
+            rm -rf "$tmp"
+            return 1
+        fi
         rm -rf "$2"
-        mv "$tmp" "$2"
-        return 0
+        if mv "$tmp" "$2"; then
+            return 0
+        fi
     fi
     rm -rf "$tmp"
     return 1
@@ -176,11 +187,11 @@ sync_dsh_anchored_standard() {
     local repo="https://github.com/xiaobright/dsh-anchored-standard.git"
     local preset_dst="$(dsh_preset_root)/$id"
     local marker="$preset_dst/.sync-commit"
-    local cache="$HOME/.dsh/cache/$id"
+    local cache="$(dsh_home)/cache/$id"
     local remote_commit local_commit
 
     DSH_ANCHORED_STATE=2
-    remote_commit="$(git ls-remote "$repo" HEAD 2>/dev/null | awk '{print $1}')"
+    remote_commit="$(git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 ls-remote "$repo" HEAD 2>/dev/null | awk '{print $1}')"
     if [ -z "$remote_commit" ]; then
         echo " [!] $id: cannot resolve remote HEAD — left unverified."
         return 1
@@ -194,14 +205,23 @@ sync_dsh_anchored_standard() {
     fi
 
     echo " -> $id: updating to $remote_commit..."
+    mkdir -p "$(dirname "$cache")"
     if [ -d "$cache/.git" ]; then
-        (cd "$cache" && git fetch --depth 1 origin main >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1)
+        (cd "$cache" && git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch --depth 1 origin main >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1)
     else
         rm -rf "$cache"
-        git clone --depth 1 "$repo" "$cache" >/dev/null 2>&1
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth 1 "$repo" "$cache" >/dev/null 2>&1
     fi
-    if [ ! -d "$cache/preset" ]; then
-        echo " [✗] $id: clone/fetch failed; preset source missing."
+    # A failed fetch against an existing clone leaves stale content while the
+    # directory still exists, so don't trust the dir alone: verify the cache
+    # HEAD matches the remote commit and re-clone from scratch if it does not.
+    if [ "$(git -C "$cache" rev-parse HEAD 2>/dev/null)" != "$remote_commit" ]; then
+        rm -rf "$cache"
+        mkdir -p "$(dirname "$cache")"
+        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth 1 "$repo" "$cache" >/dev/null 2>&1
+    fi
+    if [ ! -d "$cache/preset" ] || [ "$(git -C "$cache" rev-parse HEAD 2>/dev/null)" != "$remote_commit" ]; then
+        echo " [✗] $id: clone/fetch failed; preset source missing or stale."
         DSH_ANCHORED_STATE=1
         return 1
     fi
@@ -432,11 +452,13 @@ for PACKAGE in "${PACKAGES[@]}"; do
     if [ "$PACKAGE" = "dsh-code" ] && [ "$DSH_CODE_PARITY_STATE" -eq 1 ]; then
         echo " [✗] $BIN_NAME: BROKEN (global/profile version skew)"
         FAILED_CLIS+=("$BIN_NAME")
-    elif [ "$PACKAGE" = "dsh-code" ] && [ "$DSH_CODE_PARITY_STATE" -eq 2 ]; then
-        echo " [•] $BIN_NAME: UNVERIFIED (parity check skipped — registry/resolution unavailable)"
     elif command -v "$BIN_NAME" >/dev/null 2>&1 && "$BIN_NAME" --version >/dev/null 2>&1; then
-        VERSION=$("$BIN_NAME" --version 2>/dev/null | head -1)
-        echo " [✓] $BIN_NAME: $VERSION"
+        if [ "$PACKAGE" = "dsh-code" ] && [ "$DSH_CODE_PARITY_STATE" -eq 2 ]; then
+            echo " [•] $BIN_NAME: UNVERIFIED (parity check skipped — registry/resolution unavailable)"
+        else
+            VERSION=$("$BIN_NAME" --version 2>/dev/null | head -1)
+            echo " [✓] $BIN_NAME: $VERSION"
+        fi
     else
         echo " [✗] $BIN_NAME: BROKEN"
         FAILED_CLIS+=("$BIN_NAME")
