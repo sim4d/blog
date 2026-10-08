@@ -1,544 +1,484 @@
 #!/bin/bash
 
-# Load nvm if available (so the script works under cron's minimal environment).
-# Sourcing nvm.sh alone only defines the `nvm` function; activate the default
-# Node so node/npm and global bins actually land on PATH under cron.
-export NVM_DIR="$HOME/.nvm"
-[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-if command -v nvm >/dev/null 2>&1; then
-    nvm use default >/dev/null 2>&1 || echo " [!] Could not activate nvm default Node — falling back to whatever npm is on PATH."
-fi
-
-MAX_RETRIES=3
-
-# dsh profile parity signals. Tri-state, set by sync_dsh_profile for the
-# profile-backed dsh CLIs (dsh-code, dsh-tui):
-#   0 = confirmed parity (global == profile resolved version)
-#   1 = skew detected (pin attempted but did not converge)
-#   2 = unverified (default; sync skipped, e.g. `npm view` failed or global missing)
-# The final summary distinguishes these: only state 1 is a hard failure; state 2
-# is a non-fatal warning so a transient registry hiccup can't force a false
-# "skew" exit like the original single boolean did.
-DSH_CODE_PARITY_STATE=2
-DSH_TUI_PARITY_STATE=2
-
 # npm-manageable packages
-# PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qoder-ai/qodercli")
-PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui" "dsh-code" "@xai-official/grok")
+PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh")
+PACKAGES_EXT=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qoder-ai/qodercli" "@mimo-ai/cli" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh")
 
-# Resolve binary name for a package (basename is wrong for some scoped packages).
-# IMPORTANT: When adding a new package to PACKAGES, also add it here.
-get_bin_name() {
+# Map each package to the executable it should expose on PATH.
+# Implemented as a function instead of an associative array: the macOS
+# system Bash is 3.2, which does not support `declare -A`.
+pkg_bin() {
     case "$1" in
-        @anthropic-ai/claude-code) echo "claude" ;;
-        @openai/codex)             echo "codex" ;;
-        @qoder-ai/qodercli)       echo "qodercli" ;;
-        @moonshot-ai/kimi-code)   echo "kimi" ;;
-        @deepseek-ai/dsh)         echo "dsh" ;;
-        @deepseek-harness-tui/dsh-tui) echo "dsh-tui" ;;
-        dsh-code)                    echo "dsh-code" ;;
-        @xai-official/grok)       echo "grok" ;;
-        *)                         basename "$1" ;;
+        "@anthropic-ai/claude-code") printf '%s\n' "claude" ;;
+        "@openai/codex")             printf '%s\n' "codex" ;;
+        "@google/gemini-cli")        printf '%s\n' "gemini" ;;
+        "@qwen-code/qwen-code")      printf '%s\n' "qwen" ;;
+        "@qoder-ai/qodercli")        printf '%s\n' "qodercli" ;;
+        "@mimo-ai/cli")              printf '%s\n' "mimo" ;;
+        "@moonshot-ai/kimi-code")    printf '%s\n' "kimi" ;;
+        "@deepseek-ai/dsh")          printf '%s\n' "dsh" ;;
+        *) return 1 ;;
     esac
 }
 
-# ---------------------------------------------------------------------------
-# dsh profile version-parity sync.
-#
-# The profile-backed dsh CLIs (`dsh-code`, `dsh-tui`) are global binaries whose
-# runtime is composed from TWO copies that MUST stay at the same version:
-#
-#   * the cordis patch layer (which disables host-plane tools/skills in favor
-#     of per-session agent presets) is read from the GLOBAL install — the dsh
-#     installation anchor wins bundle resolution (resolveBundleDir);
-#   * the TUI runner that re-mounts those presets is read from the PROFILE's
-#     own node_modules (the loader's baseUrl is the profile directory).
-#
-# If they skew, the session boots broken: `dsh-code` loads zero tools/skills
-# while `--version` still exits 0 (it only exercises the launcher's
-# profile-mount check, never the composed tree), and `dsh-tui` fails outright
-# with a module-resolution error (so `--version` exits 1). The generic binary
-# health check alone cannot repair either — the profile runner must be pinned
-# to the exact version of the global install.
-# ---------------------------------------------------------------------------
-# Read a package.json's `version` field safely: a missing file, malformed
-# JSON, or a missing `version` key all yield empty (a bare `require().version`
-# would otherwise print the literal string "undefined").
-read_pkg_version() {
-    node -e 'const v=require(process.argv[1]).version;process.stdout.write(typeof v==="string"?v:"")' "$1" 2>/dev/null
-}
-
-# Read a profile manifest's dependency SPEC for a key (may be exact "0.7.0"
-# or a caret range "^0.7.0"); empty when absent or unreadable.
-read_pkg_spec() {  # $1 = pkgjson, $2 = dep key
-    node -e 'const j=require(process.argv[1]);const s=(j.dependencies||{})[process.argv[2]];process.stdout.write(typeof s==="string"?s:"")' "$1" "$2" 2>/dev/null
-}
-
-# Rewrite a profile's dependency spec to an exact version, tolerating a
-# manifest with no `dependencies` block at all (which would otherwise make
-# `j.dependencies[k]=` throw a TypeError).
-pin_dsh_spec() {  # $1 = profile_dir, $2 = dep key, $3 = version
-    node -e 'const p=process.argv[1],k=process.argv[2],v=process.argv[3];const j=require(p);(j.dependencies=j.dependencies||{})[k]=v;require("fs").writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$1/package.json" "$2" "$3"
-}
-
-# Map a PACKAGES entry to its dsh profile name (dir under <dsh_home>/profiles),
-# empty when the package is not profile-backed.
-dsh_profile_name() {
-    case "$1" in
-        dsh-code)                       echo "cli" ;;
-        @deepseek-harness-tui/dsh-tui)  echo "dsh-tui" ;;
-        *)                              echo "" ;;
-    esac
-}
-
-# Map a PACKAGES entry to its dsh parity state variable name (empty if the
-# package is not profile-backed).
-dsh_parity_state_var() {
-    case "$1" in
-        dsh-code)                       echo "DSH_CODE_PARITY_STATE" ;;
-        @deepseek-harness-tui/dsh-tui)  echo "DSH_TUI_PARITY_STATE" ;;
-        *)                              echo "" ;;
-    esac
-}
-
-# Echo the parity state (0/1/2) for a profile-backed package; empty when the
-# package is not profile-backed (so callers can branch on -n first).
-dsh_parity_state() {
-    local var; var="$(dsh_parity_state_var "$1")"
-    [ -z "$var" ] && return 0
-    printf '%s' "${!var}"
-}
-
-# Sync the profile runner for one profile-backed package to the global
-# install's version. $1 = pkg (npm name + dep key), $2 = profile name,
-# $3 = state variable name to receive the tri-state parity result.
-sync_dsh_profile() {
-    local pkg="$1" profile="$2" state_var="$3"
-    local global_ver profile_ver after_ver spec
-    local profile_dir="$(dsh_home)/profiles/$profile"
-    local global_pkg_json
-
-    # 0 = confirmed parity, 1 = skew detected, 2 = unverified (default).
-    printf -v "$state_var" '%s' 2
-
-    global_pkg_json="$(npm root -g 2>/dev/null)/$pkg/package.json"
-    global_ver="$(read_pkg_version "$global_pkg_json")"
-    if [ -z "$global_ver" ]; then
-        echo " [!] $pkg: cannot determine global version — parity left unverified."
-        return 1
-    fi
-
-    profile_ver="$(read_pkg_version "$profile_dir/node_modules/$pkg/package.json")"
-
-    if [ "$profile_ver" = "$global_ver" ]; then
-        echo " [✓] $pkg: profile runner $global_ver matches global bundle."
-        # The resolved version matches, but the SPEC may still be a caret range
-        # (e.g. ^0.7.0) that a later bare `pnpm install` in the profile could
-        # drift within. Normalize it to the exact version when it isn't already.
-        spec="$(read_pkg_spec "$profile_dir/package.json" "$pkg")"
-        if [ "$spec" != "$global_ver" ]; then
-            if pin_dsh_spec "$profile_dir" "$pkg" "$global_ver"; then
-                echo " [✓] $pkg: profile spec pinned to exact $global_ver (was ${spec:-<none>})."
-            else
-                echo " [!] $pkg: could not pin profile spec to $global_ver."
-            fi
-        fi
-        printf -v "$state_var" '%s' 0
-        return 0
-    fi
-
-    echo " [!] $pkg: version skew (global $global_ver vs profile ${profile_ver:-<not mounted>}) — pinning profile to $global_ver."
-    # pnpm only honors --save-exact on a FRESH add; upgrading an existing
-    # "^x.y.z" spec preserves the caret, and `dsh plugin add` can exit non-zero
-    # even after converging (or exit 0 without converging). So run the add/spec
-    # pin as best effort, then re-read the RESOLVED version afterwards — trust
-    # nothing from exit codes alone, on either the success or failure path.
-    dsh plugin --profile "$profile" add "$pkg@${global_ver}" --save-exact 2>&1 \
-        && pin_dsh_spec "$profile_dir" "$pkg" "$global_ver"
-    after_ver="$(read_pkg_version "$profile_dir/node_modules/$pkg/package.json")"
-    if [ "$after_ver" = "$global_ver" ]; then
-        echo " [✓] $pkg: profile runner verified at $global_ver."
-        printf -v "$state_var" '%s' 0
-        return 0
-    fi
-    echo " [✗] $pkg: pin did not converge (resolved ${after_ver:-<none>} != $global_ver)."
-    printf -v "$state_var" '%s' 1
-    return 1
-}
-
-# Sync parity for a profile-backed dsh package; a no-op for plain npm CLIs.
-sync_pkg_profile() {  # $1 = pkg
-    local profile state_var
-    profile="$(dsh_profile_name "$1")"
-    [ -z "$profile" ] && return 0
-    state_var="$(dsh_parity_state_var "$1")"
-    sync_dsh_profile "$1" "$profile" "$state_var"
-}
-
-# ---------------------------------------------------------------------------
-# dsh profile plugins & presets.
-#
-# These are DeepSeek Harness agent presets/plugins, NOT global CLI binaries, so
-# they are version-managed separately from the `PACKAGES` loop above. Two kinds:
-#
-#   * npm bundle plugin — published to npm with a `dsh.bundle.patch`; installed
-#     into the cli profile with `dsh plugin --profile cli add`, and (because
-#     `dsh plugin` does not materialize package-declared presets) its bundled
-#     preset directory is copied into the user preset root by hand.
-#   * git-only preset — a GitHub repo whose `preset/` directory is copied into
-#     the user preset root; no npm package exists for it.
-# ---------------------------------------------------------------------------
-
-# The dsh home root; DSH_HOME overrides the default $HOME/.dsh. The profile,
-# preset root, and update cache must all derive from this same dsh home.
-dsh_home() {
-    echo "${DSH_HOME:-$HOME/.dsh}"
-}
-
-# The user preset root dsh-agent-presets derives (<dshHome>/.agent-presets).
-dsh_preset_root() {
-    echo "$(dsh_home)/.agent-presets"
-}
-
-# Atomically replace a preset directory with a fresh copy from a source dir, so
-# a mid-copy failure cannot leave a half-written preset (which discovery would
-# then list as broken).
-install_preset_dir() {  # $1 = src_dir, $2 = dst_dir
-    local tmp="${2}.tmp.$$"
-    rm -rf "$tmp"
-    if cp -R "$1" "$tmp" 2>&1; then
-        # Refuse symlinks so a remote preset cannot escape the preset directory
-        # into files readable by the user (cp -R preserves symlinks).
-        if find "$tmp" -type l -print -quit 2>/dev/null | grep -q .; then
-            rm -rf "$tmp"
-            return 1
-        fi
-        rm -rf "$2"
-        if mv "$tmp" "$2"; then
-            return 0
-        fi
-    fi
-    rm -rf "$tmp"
-    return 1
-}
-
-# git-only preset: dsh-anchored-standard (xiaobright/dsh-anchored-standard).
-# Track the remote HEAD commit in a marker file under the preset dir; re-clone
-# only when the remote moves.
-DSH_ANCHORED_STATE=2
-sync_dsh_anchored_standard() {
-    local id="anchored-standard"
-    local repo="https://github.com/xiaobright/dsh-anchored-standard.git"
-    local preset_dst="$(dsh_preset_root)/$id"
-    local marker="$preset_dst/.sync-commit"
-    local cache="$(dsh_home)/cache/$id"
-    local remote_commit local_commit
-
-    DSH_ANCHORED_STATE=2
-    remote_commit="$(git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 ls-remote "$repo" HEAD 2>/dev/null | awk '{print $1}')"
-    if [ -z "$remote_commit" ]; then
-        echo " [!] $id: cannot resolve remote HEAD — left unverified."
-        return 1
-    fi
-
-    local_commit="$( [ -f "$marker" ] && cat "$marker" 2>/dev/null || echo "")"
-    if [ "$remote_commit" = "$local_commit" ] && [ -d "$preset_dst" ]; then
-        echo " [✓] $id: preset up to date at $remote_commit."
-        DSH_ANCHORED_STATE=0
-        return 0
-    fi
-
-    echo " -> $id: updating to $remote_commit..."
-    mkdir -p "$(dirname "$cache")"
-    if [ -d "$cache/.git" ]; then
-        (cd "$cache" && git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 fetch --depth 1 origin main >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1)
+# Run a command with an optional timeout. Uses GNU `timeout` or macOS `gtimeout`;
+# falls back to running bare if neither is present.
+# NPM_GLOBAL_PREFIX / NPM_GLOBAL_ROOT / TIMEOUT_BIN are set in the main body before use.
+run_with_timeout() {
+    local secs="$1"; shift
+    if [ -n "$TIMEOUT_BIN" ]; then
+        "$TIMEOUT_BIN" "$secs" "$@"
     else
-        rm -rf "$cache"
-        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth 1 "$repo" "$cache" >/dev/null 2>&1
+        "$@"
     fi
-    # A failed fetch against an existing clone leaves stale content while the
-    # directory still exists, so don't trust the dir alone: verify the cache
-    # HEAD matches the remote commit and re-clone from scratch if it does not.
-    if [ "$(git -C "$cache" rev-parse HEAD 2>/dev/null)" != "$remote_commit" ]; then
-        rm -rf "$cache"
-        mkdir -p "$(dirname "$cache")"
-        git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=30 clone --depth 1 "$repo" "$cache" >/dev/null 2>&1
-    fi
-    if [ ! -d "$cache/preset" ] || [ "$(git -C "$cache" rev-parse HEAD 2>/dev/null)" != "$remote_commit" ]; then
-        echo " [✗] $id: clone/fetch failed; preset source missing or stale."
-        DSH_ANCHORED_STATE=1
-        return 1
-    fi
-    mkdir -p "$(dsh_preset_root)"
-    if install_preset_dir "$cache/preset" "$preset_dst"; then
-        printf '%s\n' "$remote_commit" > "$marker"
-        echo " [✓] $id: preset installed at $remote_commit."
-        DSH_ANCHORED_STATE=0
-        return 0
-    fi
-    echo " [✗] $id: preset copy failed."
-    DSH_ANCHORED_STATE=1
-    return 1
 }
 
-# npm install with retry on network failure
-npm_install_with_retry() {
-    local pkg="$1"
-    local attempt=1
-    NPM_INSTALL_OK=1
+# npm network settings, applied ONLY to npm invocations -- never exported into
+# the script's environment. Rationale, both verified by measurement on this box:
+#
+#  1. Prefer a domestic mirror. registry.npmmirror.com was byte-identical to
+#     registry.npmjs.org (matching sha512) and in sync across every tracked
+#     package, so npm's integrity check still guards every download.
+#     Override with NPM_UPDATE_REGISTRY, or set it empty to keep the default.
+#  2. The local proxy ($http_proxy, typically a VPN client on :10808) truncates
+#     large tarballs: 1/3 full downloads via proxy vs 4/4 direct. So npm runs
+#     with the proxy unset. cron has no proxy vars at all, so this only affects
+#     interactive runs. Scoped to npm because other endpoints (antigravity.google)
+#     are only reachable *through* the proxy -- a global unset breaks `agy`.
 
-    while [ "$attempt" -le "$MAX_RETRIES" ]; do
-        echo " -> npm install attempt $attempt/$MAX_RETRIES..."
-        if npm install -g "$pkg" 2>&1; then
-            NPM_INSTALL_OK=0
+# Run a command (normally npm) with proxy variables removed from its
+# environment and the registry pinned. Uses `env -u` rather than `unset` so the
+# caller's shell -- and the agy step above -- keeps its own proxy settings.
+# The default is resolved here (not at definition time) so that unsetting
+# NPM_UPDATE_REGISTRY still yields the mirror; set it empty to keep npm's own
+# default registry.
+npm_env() {
+    local registry="${NPM_UPDATE_REGISTRY-https://registry.npmmirror.com/}"
+    local registry_args=()
+    if [ -n "$registry" ]; then
+        registry_args=("--registry=$registry")
+    fi
+    env -u http_proxy -u https_proxy -u all_proxy \
+        -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+        "$@" "${registry_args[@]}"
+}
+
+# Transient-failure policy for npm: despite the mirror + proxy fix above, a
+# connection can still reset mid-download (ECONNRESET / partial transfer), and
+# npm does not always retry these itself. A bounded retry normally succeeds.
+RETRY_ATTEMPTS=4
+RETRY_DELAY=5
+
+# Run a command up to RETRY_ATTEMPTS times, sleeping RETRY_DELAY between tries.
+# Returns the last attempt's exit status. Used for read-only npm queries (e.g.
+# `npm view`); package installs use npm_install_retry instead, which keys on the
+# binary working rather than the exit code. Stdin is /dev/null so a retried
+# command can never block waiting for input.
+retry() {
+    local attempt=1 rc=0
+    while [ "$attempt" -le "$RETRY_ATTEMPTS" ]; do
+        "$@" </dev/null
+        rc=$?
+        if [ "$rc" -eq 0 ]; then
             return 0
         fi
-        echo " [!] npm install failed (attempt $attempt). Retrying in $((attempt * 5))s..."
-        sleep $((attempt * 5))
+        if [ "$attempt" -lt "$RETRY_ATTEMPTS" ]; then
+            echo "     [!] attempt $attempt/$RETRY_ATTEMPTS failed (rc=$rc); retrying in ${RETRY_DELAY}s..." >&2
+            sleep "$RETRY_DELAY"
+        fi
         attempt=$((attempt + 1))
     done
-
-    echo " [!] All $MAX_RETRIES npm install attempts failed for $pkg."
-    NPM_INSTALL_OK=1
-    return 1
+    return "$rc"
 }
 
-# Verify the CLI binary works. If not, retry install + postinstall to
-# repair a missing native binary (can happen when the CLI is running
-# during upgrade — npm silently skips optional dependencies).
-verify_cli_binary() {
-    local pkg="$1"
-    local bin_name pkg_profile pkg_state
+# Quietly check that a package's binary actually runs -- the same predicate
+# verify_bin uses, without its output. Mirrors verify_bin's path construction.
+bin_works() {
+    local pkg="$1" bin npm_bin_dir npm_link
+    bin="$(pkg_bin "$pkg")" || return 1
+    [ -n "$bin" ] || return 1
+    npm_bin_dir="${NPM_GLOBAL_PREFIX:+$NPM_GLOBAL_PREFIX/bin}"
+    [ -n "$npm_bin_dir" ] && [ -d "$npm_bin_dir" ] || return 1
+    npm_link="$npm_bin_dir/$bin"
+    [ -e "$npm_link" ] || [ -L "$npm_link" ] || return 1
+    run_with_timeout 30 "$npm_link" --version >/dev/null 2>&1
+}
 
-    bin_name=$(get_bin_name "$pkg")
-
-    if command -v "$bin_name" >/dev/null 2>&1 && "$bin_name" --version >/dev/null 2>&1; then
-        echo " [✓] Verified: $bin_name --version OK"
-        VERIFY_OK=0
-        return 0
-    fi
-
-    echo " [!] $bin_name health check FAILED — likely missing native binary."
-
-    # Profile-backed dsh CLIs (`dsh-code`, `dsh-tui`) compose their runtime
-    # from the GLOBAL install plus the PROFILE's own copy; a plain npm install
-    # cannot complete the setup — the plugin must also be registered with the
-    # profile, pinned to the global version. Do that first, since no amount of
-    # re-installing will help.
-    pkg_profile="$(dsh_profile_name "$pkg")"
-    if [ -n "$pkg_profile" ]; then
-        sync_pkg_profile "$pkg"
-        pkg_state="$(dsh_parity_state "$pkg")"
-        if [ "$pkg_state" = "0" ] && "$bin_name" --version >/dev/null 2>&1; then
-            echo " [✓] Plugin registration succeeded: $bin_name --version OK"
-            VERIFY_OK=0
-            return 0
+# Install/upgrade a global npm package, retrying until the binary WORKS.
+# Keyed on the binary, not npm's exit code: when a native binary is an
+# OPTIONAL dependency, a truncated download makes npm skip it and still exit 0,
+# leaving a broken stub. Only "the binary runs" proves the install succeeded.
+# If every retry fails, clear the cache once and try a final time -- a partial
+# tarball there makes npm fail without touching the network.
+# Output goes to a temp file, then indented: piping npm into sed would hide its
+# exit status, and the per-attempt log must survive across retries.
+npm_install_retry() {
+    local pkg="$1" log attempt=1 rc=0
+    log=$(mktemp)
+    while [ "$attempt" -le "$RETRY_ATTEMPTS" ]; do
+        npm_env npm install -g "$pkg" --fetch-retries=5 --fetch-retry-maxtimeout=120000 >>"$log" 2>&1
+        rc=$?
+        if [ "$rc" -eq 0 ] && bin_works "$pkg"; then
+            sed 's/^/     /' "$log"; rm -f "$log"; return 0
         fi
-        echo " [!] Plugin registration did not fix $bin_name."
-    fi
-
-    # Retry install (the CLI process may have exited by now)
-    npm_install_with_retry "$pkg"
-    if [ "$NPM_INSTALL_OK" -eq 0 ] && "$bin_name" --version >/dev/null 2>&1; then
-        # A global reinstall can resolve a DIFFERENT version than the profile
-        # was just pinned to, silently re-opening the skew. Re-sync for
-        # profile-backed dsh CLIs before returning; the final summary owns the
-        # verdict from the fresh parity state (0/1/2), so do not fail here.
-        sync_pkg_profile "$pkg"
-        echo " [✓] Reinstall succeeded: $bin_name --version OK"
-        VERIFY_OK=0
-        return 0
-    fi
-
-    # Try the package's own install/postinstall script directly (re-fetches
-    # just the native binary). The file name differs per package
-    # (install.cjs / install.js / ...), so probe the known candidates and
-    # fall back to npm's lifecycle runner for anything else.
-    pkg_dir="$(npm root -g 2>/dev/null)/$pkg"
-    repair_script=""
-    for candidate in "$pkg_dir/install.cjs" "$pkg_dir/install.js" "$pkg_dir/postinstall.js"; do
-        if [ -f "$candidate" ]; then
-            repair_script="$candidate"
-            break
+        if [ "$attempt" -lt "$RETRY_ATTEMPTS" ]; then
+            echo "  [!] Attempt $attempt/$RETRY_ATTEMPTS left '$pkg' not working (npm rc=$rc); retrying in ${RETRY_DELAY}s..." >>"$log"
+            sleep "$RETRY_DELAY"
         fi
+        attempt=$((attempt + 1))
     done
-    if [ -n "$repair_script" ]; then
-        echo " -> Running postinstall script manually: $(basename "$repair_script")"
-        node "$repair_script" 2>&1
-    elif [ -d "$pkg_dir" ]; then
-        echo " -> Re-running install lifecycle scripts via npm..."
-        (cd "$pkg_dir" && npm run postinstall --if-present) 2>&1
-    fi
-    if "$bin_name" --version >/dev/null 2>&1; then
-        # Postinstall repair re-fetches just the native binary; it does not
-        # change versions, but the earlier failed sync may have left parity
-        # unresolved, so re-verify before declaring the binary healthy.
-        sync_pkg_profile "$pkg"
-        echo " [✓] Postinstall repair succeeded: $bin_name --version OK"
-        VERIFY_OK=0
-        return 0
-    fi
-
-    # Last resort: uninstall + reinstall
-    echo " -> Attempting clean reinstall..."
-    npm uninstall -g "$pkg" 2>&1
-    npm_install_with_retry "$pkg"
-    if [ "$NPM_INSTALL_OK" -eq 0 ] && "$bin_name" --version >/dev/null 2>&1; then
-        # A clean `npm install -g` resolves the LATEST published version, which
-        # may have moved past the one the profile runner was pinned to. Re-sync
-        # parity before returning — never trust the state var across a
-        # reinstall. The final summary owns the verdict from the fresh state.
-        sync_pkg_profile "$pkg"
-        echo " [✓] Clean reinstall succeeded: $bin_name --version OK"
-        VERIFY_OK=0
-        return 0
-    fi
-
-    echo " [✗] FAILED to verify $bin_name — tomorrow's cron will retry."
-    VERIFY_OK=1
-    return 1
+    echo "  [!] Still not working after $RETRY_ATTEMPTS attempts; clearing npm cache and retrying..." >>"$log"
+    npm_env npm cache clean --force >>"$log" 2>&1
+    npm_env npm install -g "$pkg" --fetch-retries=5 --fetch-retry-maxtimeout=120000 >>"$log" 2>&1
+    sed 's/^/     /' "$log"; rm -f "$log"
+    bin_works "$pkg"
 }
 
-# ---- Main ------------------------------------------------------------------
+# Verify the npm-managed binary symlink exists, runs, and is the one on PATH.
+# Returns 0 on success, 1 on failure. Prints the failure reason.
+verify_bin() {
+    local pkg="$1"
+    local bin
+    bin="$(pkg_bin "$pkg")"
+    local npm_bin_dir npm_link
+    npm_bin_dir="${NPM_GLOBAL_PREFIX:+$NPM_GLOBAL_PREFIX/bin}"
+    npm_link="$npm_bin_dir/$bin"
 
-echo "=== npm packages: ${PACKAGES[*]} ==="
-
-# Update Antigravity CLI first
-AGY_BIN="$HOME/.local/bin/agy"
-echo "=== Antigravity CLI (agy) ==="
-echo "----------------------------------------------------"
-if [ ! -f "$AGY_BIN" ]; then
-    echo " [!] Antigravity CLI is not installed."
-    echo " -> Installing via curl..."
-    if (set -o pipefail; curl -fsSL --max-time 120 --retry 2 https://antigravity.google/cli/install.sh | bash); then
-        echo " [✓] Antigravity CLI installed."
-    else
-        echo " [!] Antigravity CLI install failed (curl or installer returned non-zero)."
+    # Missing mapping is a hard failure, not a silent skip.
+    if [ -z "$bin" ]; then
+        echo "  [!] No binary mapping for $pkg; cannot verify."
+        return 1
     fi
+
+    # Guard: never operate on a degenerate path (e.g. "/bin" if npm prefix failed).
+    if [ -z "$NPM_GLOBAL_PREFIX" ] || [ -z "$npm_bin_dir" ] \
+       || [ "$(dirname "$npm_bin_dir")" = "/" ] || [ ! -d "$npm_bin_dir" ]; then
+        echo "  [!] Unresolved npm bin dir ('$npm_bin_dir'); refusing to verify $bin."
+        return 1
+    fi
+
+    # The npm-managed symlink must exist.
+    if [ ! -e "$npm_link" ] && [ ! -L "$npm_link" ]; then
+        echo "  [!] Binary '$bin' not linked in $npm_bin_dir."
+        return 1
+    fi
+
+    # Run --version against the npm symlink directly (capped so a first-run prompt can't hang).
+    if ! run_with_timeout 30 "$npm_link" --version >/dev/null 2>&1; then
+        echo "  [!] '$npm_link --version' failed or timed out; npm binary is broken."
+        return 1
+    fi
+
+    # Warn (not fail) if PATH resolves $bin to a different file than the npm-managed link.
+    local on_path
+    on_path=$(command -v "$bin" 2>/dev/null || true)
+    if [ -n "$on_path" ] \
+       && [ "$(readlink -f "$on_path" 2>/dev/null)" != "$(readlink -f "$npm_link" 2>/dev/null)" ]; then
+        echo "  [!] Note: '$bin' on PATH ($on_path) shadows the npm-managed binary ($npm_link)."
+    fi
+
+    echo "  -> Verified: $bin is available ($npm_link)."
+    return 0
+}
+
+# Attempt to repair a broken/missing npm global bin symlink for a package.
+# Reads the package.json "bin" field, removes leftover .<bin>-XXXX temp links,
+# recreates the proper symlink, then re-verifies. Returns 0 on success.
+repair_bin() {
+    local pkg="$1"
+    local bin
+    bin="$(pkg_bin "$pkg")"
+    local npm_bin_dir pkg_dir target
+
+    npm_bin_dir="${NPM_GLOBAL_PREFIX:+$NPM_GLOBAL_PREFIX/bin}"
+    pkg_dir="$NPM_GLOBAL_ROOT/$pkg"
+
+    if [ -z "$bin" ] || [ -z "$NPM_GLOBAL_ROOT" ] || [ ! -d "$pkg_dir" ]; then
+        return 1
+    fi
+
+    # Guard: never rm/ln in a degenerate dir (e.g. "/bin" if npm prefix failed).
+    if [ -z "$npm_bin_dir" ] || [ "$(dirname "$npm_bin_dir")" = "/" ] || [ ! -d "$npm_bin_dir" ]; then
+        echo "  [!] Unresolved npm bin dir ('$npm_bin_dir'); refusing to repair $bin."
+        return 1
+    fi
+
+    # Resolve the script path from package.json "bin" via node (always available with npm).
+    # Only the exact bin name is accepted; no guessing for multi-bin packages.
+    target=$(node -e '
+        const fs = require("fs");
+        const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        const b = p.bin || {};
+        const out = typeof b === "string" ? b : (b[process.argv[2]] || "");
+        process.stdout.write(out || "");
+    ' "$pkg_dir/package.json" "$bin" 2>/dev/null)
+
+    if [ -z "$target" ]; then
+        echo "  [!] Could not resolve bin target for $pkg."
+        return 1
+    fi
+
+    echo "  -> Repairing: relinking $bin -> $pkg_dir/$target"
+
+    # Remove leftover npm temp symlinks (.<bin>-XXXX); ln -sfn replaces the final
+    # name even if it is an existing symlink to a directory.
+    rm -f "$npm_bin_dir"/."$bin"-* 2>/dev/null
+
+    # Recreate the symlink using an absolute target derived from npm root -g.
+    if ! ln -sfn "$pkg_dir/$target" "$npm_bin_dir/$bin" 2>/dev/null; then
+        echo "  [!] Failed to create symlink $npm_bin_dir/$bin."
+        return 1
+    fi
+
+    verify_bin "$pkg"
+}
+
+# Ensure the binary is available. Tries: verify -> relink repair -> reinstall -> verify.
+ensure_bin() {
+    local pkg="$1"
+    if verify_bin "$pkg"; then
+        return 0
+    fi
+    echo "  -> Attempting repair (relink)..."
+    if repair_bin "$pkg"; then
+        return 0
+    fi
+    echo "  -> Relink did not help; reinstalling $pkg..."
+    npm_install_retry "$pkg"
+    verify_bin "$pkg"
+}
+
+# Select package set based on --ext flag
+if [ "$1" = "--ext" ]; then
+    SELECTED_PACKAGES=("${PACKAGES_EXT[@]}")
+else
+    SELECTED_PACKAGES=("${PACKAGES[@]}")
+fi
+
+# Pretty banner (Unicode box) on a terminal; plain ASCII banner when piped
+# to a log file.
+banner() {
+    local title="$1"
+    if [ -t 1 ]; then
+        local width=52 pad_l pad_r line
+        pad_l=$(( (width - ${#title}) / 2 ))
+        pad_r=$(( width - ${#title} - pad_l ))
+        printf -v line '%*s' "$width" ' '
+        line="${line// /═}"
+        printf '╔%s╗\n' "$line"
+        printf '║%*s%s%*s║\n' "$pad_l" '' "$title" "$pad_r" ''
+        printf '╚%s╝\n' "$line"
+    else
+        echo "== $title =="
+    fi
+}
+
+# Render a duration in whole seconds as "1h 2m 3s", "2m 3s" or "3s".
+fmt_duration() {
+    local s="$1"
+    if [ "$s" -ge 3600 ]; then
+        printf '%dh %dm %ds' $((s/3600)) $((s%3600/60)) $((s%60))
+    elif [ "$s" -ge 60 ]; then
+        printf '%dm %ds' $((s/60)) $((s%60))
+    else
+        printf '%ds' "$s"
+    fi
+}
+
+# Print the closing banner + elapsed time, and keep the caller's exit code.
+finish() {
+    local rc=$?
+    local end_time elapsed
+    end_time=$(date +%s)
+    elapsed=$((end_time - START_TIME))
+    echo ""
+    echo "End time: $(date '+%Y-%m-%d %H:%M:%S')"
+    banner "Done in $(fmt_duration "$elapsed")"
+    exit "$rc"
+}
+
+START_TIME=$(date +%s)
+trap finish EXIT
+
+banner "AI Agents Update"
+echo "Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+echo ""
+
+echo "=== Antigravity CLI (agy) ==="
+echo "--------------------------------------------------"
+
+AGY_BIN="$HOME/.local/bin/agy"
+
+if [ ! -f "$AGY_BIN" ]; then
+    echo "  [!] Antigravity CLI is not installed."
+    echo "  -> Installing via curl..."
+    curl -fsSL https://antigravity.google/cli/install.sh | bash
 else
     INSTALLED_VERSION=$("$AGY_BIN" --version 2>/dev/null | head -1)
-    echo " Current version: $INSTALLED_VERSION"
-    echo " Note: Antigravity CLI auto-updates in the background."
-    echo " Running $AGY_BIN update"
-    "$AGY_BIN" update
+    echo "  Current version: $INSTALLED_VERSION"
+    echo "  Note: Antigravity CLI auto-updates in the background."
+    echo "  Running $AGY_BIN update"
+    $AGY_BIN update
 fi
-
-INSTALLED_LIST=$(npm list -g --depth=0 2>/dev/null)
-
-for PACKAGE in "${PACKAGES[@]}"; do
-    echo "----------------------------------------------------"
-    echo "Checking $PACKAGE..."
-
-    BIN_NAME=$(get_bin_name "$PACKAGE")
-
-    INSTALLED_VERSION=$(echo "$INSTALLED_LIST" | grep -F "$PACKAGE@" | awk -F@ '{print $NF}' | head -1)
-    if [ -z "$INSTALLED_VERSION" ]; then
-        echo " [!] $PACKAGE is not installed."
-        echo " -> Installing..."
-        npm_install_with_retry "$PACKAGE"
-        if [ "$NPM_INSTALL_OK" -eq 0 ]; then
-            # A profile-backed CLI's profile runner must be pinned to this fresh
-            # global version BEFORE the binary is trusted as healthy.
-            sync_pkg_profile "$PACKAGE"
-            verify_cli_binary "$PACKAGE"
-        fi
-        continue
-    fi
-
-    echo " Current version: $INSTALLED_VERSION"
-
-    LATEST_VERSION=$(npm view "$PACKAGE" version 2>/dev/null)
-    if [ -z "$LATEST_VERSION" ]; then
-        echo " [!] Could not fetch latest version for $PACKAGE."
-        # Parity sync does NOT depend on `npm view` — it reads the installed
-        # global bundle and the profile runner directly. Still run it so a
-        # registry hiccup can't mask a real skew (which would otherwise be
-        # left in the default "unverified" state and reported as exit 0).
-        sync_pkg_profile "$PACKAGE"
-        continue
-    fi
-
-    echo " Latest version:  $LATEST_VERSION"
-
-    NEEDS_UPDATE=0
-    if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
-        if [ "$(printf '%s\n' "$INSTALLED_VERSION" "$LATEST_VERSION" | sort -V | head -n1)" = "$INSTALLED_VERSION" ]; then
-            echo " -> Update available. Upgrading $PACKAGE..."
-            NEEDS_UPDATE=1
-        else
-            echo " -> Installed version seems newer or same (sanity check)."
-        fi
-    else
-        echo " -> Up to date."
-    fi
-
-    if [ "$NEEDS_UPDATE" -eq 1 ]; then
-        npm_install_with_retry "$PACKAGE"
-        if [ "$NPM_INSTALL_OK" -eq 0 ]; then
-            # Re-pin the profile runner to the freshly upgraded global version.
-            sync_pkg_profile "$PACKAGE"
-            verify_cli_binary "$PACKAGE"
-        fi
-    else
-        # Even if up to date, verify the binary works — a previous
-        # install may have silently skipped the native binary. For
-        # profile-backed dsh CLIs, also re-check version parity: a skew leaves
-        # --version green (dsh-code) yet the session with zero tools/skills, or
-        # hard-fails (dsh-tui) with a module-resolution error — so it must be
-        # caught here, not in verify_cli_binary's failure path.
-        sync_pkg_profile "$PACKAGE"
-        verify_cli_binary "$PACKAGE"
-    fi
-done
-
-# dsh profile plugins & presets (not global CLIs).
-echo "----------------------------------------------------"
-echo "=== dsh profile plugins / presets ==="
-sync_dsh_anchored_standard
 
 echo ""
-echo "=== Final health check summary ==="
-FAILED_CLIS=()
-for PACKAGE in "${PACKAGES[@]}"; do
-    BIN_NAME=$(get_bin_name "$PACKAGE")
-    # Profile-backed dsh CLIs additionally require global/profile version
-    # parity; a skew leaves the session unusable (zero tools/skills, or a hard
-    # module-resolution failure), so treat a parity failure as broken.
-    PROFILED=$(dsh_profile_name "$PACKAGE")
-    if [ -n "$PROFILED" ] && [ "$(dsh_parity_state "$PACKAGE")" = "1" ]; then
-        echo " [✗] $BIN_NAME: BROKEN (global/profile version skew)"
-        FAILED_CLIS+=("$BIN_NAME")
-    elif command -v "$BIN_NAME" >/dev/null 2>&1 && "$BIN_NAME" --version >/dev/null 2>&1; then
-        if [ -n "$PROFILED" ] && [ "$(dsh_parity_state "$PACKAGE")" = "2" ]; then
-            echo " [•] $BIN_NAME: UNVERIFIED (parity check skipped — registry/resolution unavailable)"
+echo "=== npm packages: ${SELECTED_PACKAGES[*]} ==="
+
+INSTALLED_LIST=$(npm_env npm list -g --depth=0 2>/dev/null)
+
+# Resolve npm globals once (used by verify_bin/repair_bin) instead of per package.
+NPM_GLOBAL_PREFIX="$(npm_env npm prefix -g 2>/dev/null)"
+NPM_GLOBAL_ROOT="$(npm_env npm root -g 2>/dev/null)"
+TIMEOUT_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null || true)"
+if [ -z "$TIMEOUT_BIN" ]; then
+    echo "  [!] Neither 'timeout' nor 'gtimeout' found; --version probes will run uncapped."
+fi
+
+VERIFY_FAILURES=0
+
+for PACKAGE in "${SELECTED_PACKAGES[@]}"; do
+    echo "--------------------------------------------------"
+    echo "Checking $PACKAGE..."
+
+    INSTALLED_VERSION=$(echo "$INSTALLED_LIST" | grep " $PACKAGE@" | awk -F@ '{print $NF}')
+
+    if [ -z "$INSTALLED_VERSION" ]; then
+        # npm list -g misses binaries not installed via npm (e.g. corepack-
+        # managed pnpm). Before assuming "not installed" and reinstalling
+        # (which collides with the existing shim: EEXIST), probe the binary
+        # directly. If it runs, fall through to the version-compare path
+        # rather than a destructive reinstall.
+        bin="$(pkg_bin "$PACKAGE")"
+        if [ -n "$bin" ] && command -v "$bin" >/dev/null 2>&1 \
+           && run_with_timeout 30 "$bin" --version >/dev/null 2>&1; then
+            INSTALLED_VERSION=$("$bin" --version 2>/dev/null | tail -1)
+            echo "  Current version: $INSTALLED_VERSION (not npm-managed; binary probes OK)"
         else
-            VERSION=$("$BIN_NAME" --version 2>/dev/null | head -1)
-            echo " [✓] $BIN_NAME: $VERSION"
+            echo "  [!] $PACKAGE is not installed."
+            echo "  -> Installing..."
+            npm_install_retry "$PACKAGE"
+            ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
+            continue
+        fi
+    fi
+
+    echo "  Current version: $INSTALLED_VERSION"
+
+    LATEST_VERSION=$(retry npm_env npm view "$PACKAGE" version 2>/dev/null)
+
+    if [ -z "$LATEST_VERSION" ]; then
+        echo "  [!] Could not fetch latest version for $PACKAGE."
+        ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
+        continue
+    fi
+
+    echo "  Latest version:  $LATEST_VERSION"
+
+    if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
+        if [ "$(printf '%s\n' "$INSTALLED_VERSION" "$LATEST_VERSION" | sort -V | head -n1)" = "$INSTALLED_VERSION" ]; then
+             echo "  -> Update available. Upgrading $PACKAGE..."
+             npm_install_retry "$PACKAGE"
+             ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
+        else
+             echo "  -> Installed version seems newer or same (sanity check)."
+             ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
         fi
     else
-        echo " [✗] $BIN_NAME: BROKEN"
-        FAILED_CLIS+=("$BIN_NAME")
+        echo "  -> Up to date."
+        ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
     fi
 done
 
-# Report the dsh preset state; only a hard failure (state 1) contributes to
-# FAILED_CLIS. Unverified (state 2) is a warning, not fatal.
-if [ "$DSH_ANCHORED_STATE" -eq 1 ]; then
-    echo " [✗] dsh-anchored-standard: BROKEN (update failed)"
-    FAILED_CLIS+=("dsh-anchored-standard")
-elif [ "$DSH_ANCHORED_STATE" -eq 2 ]; then
-    echo " [•] dsh-anchored-standard: UNVERIFIED"
+DSH_PROFILE="tui"
+DSH_PLUGIN="@huiliyi37/dsh-tianshu-tui"
+
+echo ""
+echo "=== dsh TUI plugin ($DSH_PLUGIN, profile $DSH_PROFILE) ==="
+echo "--------------------------------------------------"
+
+if ! command -v dsh >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
+    echo "  [!] Skipping $DSH_PLUGIN: dsh and pnpm must both be on PATH (see dsh failures above)."
 else
-    echo " [✓] dsh-anchored-standard: OK"
+    # dsh resolves its profile dir as <dsh-home>/profiles/<name>, preferring an
+    # explicit path, then $DSH_HOME, then ~/.dsh. Mirror that precedence so the
+    # verify path matches wherever the plugin was actually installed.
+    DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
+    PLUGIN_PKG_DIR="$DSH_HOME_DIR/profiles/$DSH_PROFILE/node_modules/$DSH_PLUGIN"
+
+    # Cap the probes too: like `add`, `dsh plugin list` delegates to pnpm and
+    # can hang on a stalled connection; a timed-out probe is treated as
+    # unknown state and falls through to the (also capped) add + verify below.
+    if ! run_with_timeout 60 dsh plugin list --profile "$DSH_PROFILE" >/dev/null 2>&1 \
+       && ! run_with_timeout 60 dsh plugin --profile "$DSH_PROFILE" list >/dev/null 2>&1; then
+        # Neither 'dsh plugin list' variant worked: profile is missing or dsh is too old.
+        echo "  -> Profile '$DSH_PROFILE' not found; installing $DSH_PLUGIN..."
+    else
+        PLUGIN_INSTALLED_VERSION=$(node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            process.stdout.write(p.version || "");
+        ' "$PLUGIN_PKG_DIR/package.json" 2>/dev/null)
+        PLUGIN_LATEST_VERSION=$(retry npm_env npm view "$DSH_PLUGIN" version 2>/dev/null)
+
+        if [ -n "$PLUGIN_INSTALLED_VERSION" ]; then
+            echo "  Current version: $PLUGIN_INSTALLED_VERSION"
+        else
+            echo "  [!] $DSH_PLUGIN not found in profile $DSH_PROFILE."
+        fi
+
+        if [ -n "$PLUGIN_LATEST_VERSION" ]; then
+            echo "  Latest version:  $PLUGIN_LATEST_VERSION"
+            if [ "$PLUGIN_INSTALLED_VERSION" != "$PLUGIN_LATEST_VERSION" ]; then
+                # dsh profiles pin deps, so `pnpm up` alone may stay below the latest.
+                echo "  -> Update available. Updating $DSH_PLUGIN..."
+            else
+                echo "  -> Up to date; refreshing profile dependencies..."
+            fi
+        else
+            echo "  [!] Could not fetch latest version for $DSH_PLUGIN; refreshing profile dependencies only."
+        fi
+    fi
+
+    # Cap the call itself: unlike npm, pnpm has no built-in fetch timeout,
+    # so a stalled connection could hang this one state-mutating call forever.
+    # Output goes to a temp file rather than a pipe: a pipe would keep waiting
+    # on any orphaned child that survives the timeout, hanging the script
+    # anyway. The outcome is verified via the installed package.json below,
+    # not via this call's status.
+    PLUGIN_ADD_LOG=$(mktemp)
+    if run_with_timeout 300 dsh plugin --profile "$DSH_PROFILE" add "$DSH_PLUGIN" >"$PLUGIN_ADD_LOG" 2>&1; then
+        PLUGIN_ADD_OK=1
+    else
+        PLUGIN_ADD_OK=0
+        echo "  [!] 'dsh plugin add' exited non-zero or timed out; the profile may be unchanged."
+    fi
+    sed 's/^/     /' "$PLUGIN_ADD_LOG"
+    rm -f "$PLUGIN_ADD_LOG"
+
+    PLUGIN_INSTALLED_VERSION=$(node -e '
+        const fs = require("fs");
+        const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.stdout.write(p.version || "");
+    ' "$PLUGIN_PKG_DIR/package.json" 2>/dev/null)
+    if [ -n "$PLUGIN_INSTALLED_VERSION" ]; then
+        echo "  -> Verified: $DSH_PLUGIN $PLUGIN_INSTALLED_VERSION in profile $DSH_PROFILE."
+    else
+        echo "  [!] $DSH_PLUGIN is still missing from profile $DSH_PROFILE."
+        VERIFY_FAILURES=$((VERIFY_FAILURES+1))
+    fi
+    # A failed/timed-out add must count even when a previous install remains:
+    # the plugin works, but the requested update/refresh did not happen.
+    if [ "$PLUGIN_ADD_OK" = 0 ]; then
+        VERIFY_FAILURES=$((VERIFY_FAILURES+1))
+    fi
 fi
 
-if [ "${#FAILED_CLIS[@]}" -gt 0 ]; then
-    echo ""
-    echo " [!] The following CLIs failed verification: ${FAILED_CLIS[*]}"
-    echo " [!] If a CLI process was running during upgrade, tomorrow's cron will retry."
-    # Non-zero exit so cron/CI can detect a failed nightly update.
+if [ "$VERIFY_FAILURES" -gt 0 ]; then
+    echo "--------------------------------------------------"
+    echo "[!] $VERIFY_FAILURES package(s) failed final verification."
     exit 1
 fi
 
-echo ""
-# (END)
+echo "--------------------------------------------------"
+echo "All packages verified."
+
