@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # npm-manageable packages
-PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh")
-PACKAGES_EXT=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qoder-ai/qodercli" "@mimo-ai/cli" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh")
+PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@qodercn-ai/qoderclicn" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui")
+PACKAGES_EXT=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qodercn-ai/qoderclicn" "@mimo-ai/cli" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui")
 
 # Map each package to the executable it should expose on PATH.
 # Implemented as a function instead of an associative array: the macOS
@@ -13,10 +13,11 @@ pkg_bin() {
         "@openai/codex")             printf '%s\n' "codex" ;;
         "@google/gemini-cli")        printf '%s\n' "gemini" ;;
         "@qwen-code/qwen-code")      printf '%s\n' "qwen" ;;
-        "@qoder-ai/qodercli")        printf '%s\n' "qodercli" ;;
+        "@qodercn-ai/qoderclicn")    printf '%s\n' "qoderclicn" ;;
         "@mimo-ai/cli")              printf '%s\n' "mimo" ;;
         "@moonshot-ai/kimi-code")    printf '%s\n' "kimi" ;;
         "@deepseek-ai/dsh")          printf '%s\n' "dsh" ;;
+        "@deepseek-harness-tui/dsh-tui") printf '%s\n' "dsh-tui" ;;
         *) return 1 ;;
     esac
 }
@@ -36,10 +37,11 @@ run_with_timeout() {
 # npm network settings, applied ONLY to npm invocations -- never exported into
 # the script's environment. Rationale, both verified by measurement on this box:
 #
-#  1. Prefer a domestic mirror. registry.npmmirror.com was byte-identical to
-#     registry.npmjs.org (matching sha512) and in sync across every tracked
-#     package, so npm's integrity check still guards every download.
-#     Override with NPM_UPDATE_REGISTRY, or set it empty to keep the default.
+#  1. Prefer a domestic mirror. registry.npmmirror.com serves matching sha512
+#     for every tracked package, so npm's integrity check still guards every
+#     download. Override with NPM_UPDATE_REGISTRY, or set it empty to keep the
+#     default. The mirror is NOT always complete, however: it can be missing a
+#     specific platform build, which is what NPM_FALLBACK_REGISTRY below covers.
 #  2. The local proxy ($http_proxy, typically a VPN client on :10808) truncates
 #     large tarballs: 1/3 full downloads via proxy vs 4/4 direct. So npm runs
 #     with the proxy unset. cron has no proxy vars at all, so this only affects
@@ -52,8 +54,14 @@ run_with_timeout() {
 # The default is resolved here (not at definition time) so that unsetting
 # NPM_UPDATE_REGISTRY still yields the mirror; set it empty to keep npm's own
 # default registry.
+#
+# NPM_REGISTRY_OVERRIDE wins over everything when non-empty, so a caller can
+# point one invocation at a different registry. Pass it as an env prefix
+# (`NPM_REGISTRY_OVERRIDE=... npm_env ...`), which keeps it scoped to that
+# call. This exists because npm resolves duplicate --registry flags last-wins,
+# so appending --registry after the caller's own would silently undo it.
 npm_env() {
-    local registry="${NPM_UPDATE_REGISTRY-https://registry.npmmirror.com/}"
+    local registry="${NPM_REGISTRY_OVERRIDE:-${NPM_UPDATE_REGISTRY-https://registry.npmmirror.com/}}"
     local registry_args=()
     if [ -n "$registry" ]; then
         registry_args=("--registry=$registry")
@@ -62,6 +70,17 @@ npm_env() {
         -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
         "$@" "${registry_args[@]}"
 }
+
+# Upstream registry, used only when the mirror demonstrably produced a binary
+# that does not run. Some packages carry their native executable as an optional
+# dependency that is an npm ALIAS to a platform-specific package version (e.g.
+# @openai/codex's `@openai/codex-darwin-arm64` -> `npm:@openai/codex@<ver>-darwin-arm64`).
+# The mirror can be missing one of those platform versions while having the
+# main package, and npm treats a failed OPTIONAL dependency as non-fatal: it
+# exits 0 and leaves a stub whose --version fails with "Missing optional
+# dependency". No amount of retrying or cache-clearing fixes that -- only
+# fetching from upstream does. Override with NPM_FALLBACK_REGISTRY.
+NPM_FALLBACK_REGISTRY="${NPM_FALLBACK_REGISTRY-https://registry.npmjs.org/}"
 
 # Transient-failure policy for npm: despite the mirror + proxy fix above, a
 # connection can still reset mid-download (ECONNRESET / partial transfer), and
@@ -110,6 +129,12 @@ bin_works() {
 # leaving a broken stub. Only "the binary runs" proves the install succeeded.
 # If every retry fails, clear the cache once and try a final time -- a partial
 # tarball there makes npm fail without touching the network.
+#
+# If the binary still does not run, the cause may not be transient at all: the
+# mirror can be missing the package's platform build (see
+# NPM_FALLBACK_REGISTRY). Retrying a mirror that does not have the artifact
+# cannot help, so the last resort is one install from upstream.
+#
 # Output goes to a temp file, then indented: piping npm into sed would hide its
 # exit status, and the per-attempt log must survive across retries.
 npm_install_retry() {
@@ -130,6 +155,12 @@ npm_install_retry() {
     echo "  [!] Still not working after $RETRY_ATTEMPTS attempts; clearing npm cache and retrying..." >>"$log"
     npm_env npm cache clean --force >>"$log" 2>&1
     npm_env npm install -g "$pkg" --fetch-retries=5 --fetch-retry-maxtimeout=120000 >>"$log" 2>&1
+    if [ -n "$NPM_FALLBACK_REGISTRY" ] && ! bin_works "$pkg"; then
+        echo "  [!] $pkg still not working; retrying once from $NPM_FALLBACK_REGISTRY (mirror may lack this platform build)..." >>"$log"
+        # Only the registry changes; the alias targets are fetched with it.
+        NPM_REGISTRY_OVERRIDE="$NPM_FALLBACK_REGISTRY" \
+            npm_env npm install -g "$pkg" --fetch-retries=5 --fetch-retry-maxtimeout=120000 >>"$log" 2>&1
+    fi
     sed 's/^/     /' "$log"; rm -f "$log"
     bin_works "$pkg"
 }
@@ -388,90 +419,6 @@ for PACKAGE in "${SELECTED_PACKAGES[@]}"; do
         ensure_bin "$PACKAGE" || VERIFY_FAILURES=$((VERIFY_FAILURES+1))
     fi
 done
-
-DSH_PROFILE="tui"
-DSH_PLUGIN="@huiliyi37/dsh-tianshu-tui"
-
-echo ""
-echo "=== dsh TUI plugin ($DSH_PLUGIN, profile $DSH_PROFILE) ==="
-echo "--------------------------------------------------"
-
-if ! command -v dsh >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
-    echo "  [!] Skipping $DSH_PLUGIN: dsh and pnpm must both be on PATH (see dsh failures above)."
-else
-    # dsh resolves its profile dir as <dsh-home>/profiles/<name>, preferring an
-    # explicit path, then $DSH_HOME, then ~/.dsh. Mirror that precedence so the
-    # verify path matches wherever the plugin was actually installed.
-    DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
-    PLUGIN_PKG_DIR="$DSH_HOME_DIR/profiles/$DSH_PROFILE/node_modules/$DSH_PLUGIN"
-
-    # Cap the probes too: like `add`, `dsh plugin list` delegates to pnpm and
-    # can hang on a stalled connection; a timed-out probe is treated as
-    # unknown state and falls through to the (also capped) add + verify below.
-    if ! run_with_timeout 60 dsh plugin list --profile "$DSH_PROFILE" >/dev/null 2>&1 \
-       && ! run_with_timeout 60 dsh plugin --profile "$DSH_PROFILE" list >/dev/null 2>&1; then
-        # Neither 'dsh plugin list' variant worked: profile is missing or dsh is too old.
-        echo "  -> Profile '$DSH_PROFILE' not found; installing $DSH_PLUGIN..."
-    else
-        PLUGIN_INSTALLED_VERSION=$(node -e '
-            const fs = require("fs");
-            const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            process.stdout.write(p.version || "");
-        ' "$PLUGIN_PKG_DIR/package.json" 2>/dev/null)
-        PLUGIN_LATEST_VERSION=$(retry npm_env npm view "$DSH_PLUGIN" version 2>/dev/null)
-
-        if [ -n "$PLUGIN_INSTALLED_VERSION" ]; then
-            echo "  Current version: $PLUGIN_INSTALLED_VERSION"
-        else
-            echo "  [!] $DSH_PLUGIN not found in profile $DSH_PROFILE."
-        fi
-
-        if [ -n "$PLUGIN_LATEST_VERSION" ]; then
-            echo "  Latest version:  $PLUGIN_LATEST_VERSION"
-            if [ "$PLUGIN_INSTALLED_VERSION" != "$PLUGIN_LATEST_VERSION" ]; then
-                # dsh profiles pin deps, so `pnpm up` alone may stay below the latest.
-                echo "  -> Update available. Updating $DSH_PLUGIN..."
-            else
-                echo "  -> Up to date; refreshing profile dependencies..."
-            fi
-        else
-            echo "  [!] Could not fetch latest version for $DSH_PLUGIN; refreshing profile dependencies only."
-        fi
-    fi
-
-    # Cap the call itself: unlike npm, pnpm has no built-in fetch timeout,
-    # so a stalled connection could hang this one state-mutating call forever.
-    # Output goes to a temp file rather than a pipe: a pipe would keep waiting
-    # on any orphaned child that survives the timeout, hanging the script
-    # anyway. The outcome is verified via the installed package.json below,
-    # not via this call's status.
-    PLUGIN_ADD_LOG=$(mktemp)
-    if run_with_timeout 300 dsh plugin --profile "$DSH_PROFILE" add "$DSH_PLUGIN" >"$PLUGIN_ADD_LOG" 2>&1; then
-        PLUGIN_ADD_OK=1
-    else
-        PLUGIN_ADD_OK=0
-        echo "  [!] 'dsh plugin add' exited non-zero or timed out; the profile may be unchanged."
-    fi
-    sed 's/^/     /' "$PLUGIN_ADD_LOG"
-    rm -f "$PLUGIN_ADD_LOG"
-
-    PLUGIN_INSTALLED_VERSION=$(node -e '
-        const fs = require("fs");
-        const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-        process.stdout.write(p.version || "");
-    ' "$PLUGIN_PKG_DIR/package.json" 2>/dev/null)
-    if [ -n "$PLUGIN_INSTALLED_VERSION" ]; then
-        echo "  -> Verified: $DSH_PLUGIN $PLUGIN_INSTALLED_VERSION in profile $DSH_PROFILE."
-    else
-        echo "  [!] $DSH_PLUGIN is still missing from profile $DSH_PROFILE."
-        VERIFY_FAILURES=$((VERIFY_FAILURES+1))
-    fi
-    # A failed/timed-out add must count even when a previous install remains:
-    # the plugin works, but the requested update/refresh did not happen.
-    if [ "$PLUGIN_ADD_OK" = 0 ]; then
-        VERIFY_FAILURES=$((VERIFY_FAILURES+1))
-    fi
-fi
 
 if [ "$VERIFY_FAILURES" -gt 0 ]; then
     echo "--------------------------------------------------"
