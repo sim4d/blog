@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # npm-manageable packages
-PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@qodercn-ai/qoderclicn" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui")
-PACKAGES_EXT=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qodercn-ai/qoderclicn" "@mimo-ai/cli" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui")
+PACKAGES=("@anthropic-ai/claude-code" "@openai/codex" "@qodercn-ai/qoderclicn" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui" "@opencode/cli")
+PACKAGES_EXT=("@anthropic-ai/claude-code" "@openai/codex" "@google/gemini-cli" "@qwen-code/qwen-code" "@qodercn-ai/qoderclicn" "@mimo-ai/cli" "@moonshot-ai/kimi-code" "@deepseek-ai/dsh" "@deepseek-harness-tui/dsh-tui" "@opencode/cli")
 
 # Map each package to the executable it should expose on PATH.
 # Implemented as a function instead of an associative array: the macOS
@@ -18,6 +18,7 @@ pkg_bin() {
         "@moonshot-ai/kimi-code")    printf '%s\n' "kimi" ;;
         "@deepseek-ai/dsh")          printf '%s\n' "dsh" ;;
         "@deepseek-harness-tui/dsh-tui") printf '%s\n' "dsh-tui" ;;
+        "@opencode/cli")             printf '%s\n' "opencode" ;;
         *) return 1 ;;
     esac
 }
